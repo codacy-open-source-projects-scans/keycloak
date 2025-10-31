@@ -1,0 +1,221 @@
+package org.keycloak.representations.workflows;
+
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_CONCURRENCY;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_CONDITIONS;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_ENABLED;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_IF;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_NAME;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_ON_EVENT;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_STATE;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_STEPS;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_WITH;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_USES;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Objects;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import org.keycloak.common.util.MultivaluedHashMap;
+
+@JsonPropertyOrder({"id", CONFIG_NAME, CONFIG_USES, CONFIG_ENABLED, CONFIG_ON_EVENT, CONFIG_CONCURRENCY, CONFIG_IF, CONFIG_STEPS, CONFIG_STATE})
+@JsonIgnoreProperties(CONFIG_WITH)
+public final class WorkflowRepresentation extends AbstractWorkflowComponentRepresentation {
+
+    public static Builder create() {
+        return new Builder().of(WorkflowConstants.DEFAULT_WORKFLOW);
+    }
+
+    private List<WorkflowStepRepresentation> steps;
+
+    private WorkflowStateRepresentation state;
+
+    @JsonProperty(CONFIG_CONCURRENCY)
+    private WorkflowConcurrencyRepresentation concurrency;
+
+    public WorkflowRepresentation() {
+        super(null, null, null);
+    }
+
+    public WorkflowRepresentation(String id, String workflow, MultivaluedHashMap<String, String> config, List<WorkflowStepRepresentation> steps) {
+        super(id, workflow, config);
+        this.steps = steps;
+    }
+
+    public String getOn() {
+        return getConfigValue(CONFIG_ON_EVENT, String.class);
+    }
+
+    public void setOn(String eventConditions) {
+        setConfigValue(CONFIG_ON_EVENT, eventConditions);
+    }
+
+    public String getName() {
+        return getConfigValue(CONFIG_NAME, String.class);
+    }
+
+    public void setName(String name) {
+        setConfigValue(CONFIG_NAME, name);
+    }
+
+    public Boolean getEnabled() {
+        return getConfigValue(CONFIG_ENABLED, Boolean.class);
+    }
+
+    public void setEnabled(Boolean enabled) {
+        setConfigValue(CONFIG_ENABLED, enabled);
+    }
+
+    @JsonProperty(CONFIG_IF)
+    public String getConditions() {
+        return getConfigValue(CONFIG_CONDITIONS, String.class);
+    }
+
+    public void setConditions(String conditions) {
+        setConfigValue(CONFIG_CONDITIONS, conditions);
+    }
+
+    public void setSteps(List<WorkflowStepRepresentation> steps) {
+        this.steps = steps;
+    }
+
+    public List<WorkflowStepRepresentation> getSteps() {
+        return steps;
+    }
+
+    public WorkflowStateRepresentation getState() {
+        if (state == null) {
+            state = new WorkflowStateRepresentation(this);
+        }
+
+        if (state.getErrors().isEmpty()) {
+            return null;
+        }
+
+        return state;
+    }
+
+    public void setState(WorkflowStateRepresentation state) {
+        this.state = state;
+    }
+
+    public WorkflowConcurrencyRepresentation getConcurrency() {
+        return concurrency;
+    }
+
+    public void setConcurrency(WorkflowConcurrencyRepresentation concurrency) {
+        this.concurrency = concurrency;
+    }
+
+    @JsonIgnore
+    public boolean isCancelIfRunning() {
+        return concurrency != null && Boolean.TRUE.equals(concurrency.isCancelIfRunning());
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == this) {
+            return true;
+        }
+        if (!(obj instanceof WorkflowRepresentation)) {
+            return false;
+        }
+        WorkflowRepresentation that = (WorkflowRepresentation) obj;
+        // TODO: include state in comparison?
+        return Objects.equals(getUses(), that.getUses()) && Objects.equals(getConfig(), that.getConfig())
+            && Objects.equals(getSteps(), that.getSteps());
+    }
+
+    public static class Builder {
+
+        private final Map<WorkflowRepresentation, List<WorkflowStepRepresentation>> steps = new HashMap<>();
+        private List<Builder> builders = new ArrayList<>();
+        private WorkflowRepresentation representation;
+
+        private Builder() {
+        }
+
+        private Builder(WorkflowRepresentation representation, List<Builder> builders) {
+            this.representation = representation;
+            this.builders = builders;
+        }
+
+        public Builder of(String providerId) {
+            WorkflowRepresentation representation = new WorkflowRepresentation();
+            representation.setUses(providerId);
+            Builder builder = new Builder(representation, builders);
+            builders.add(builder);
+            return builder;
+        }
+
+        public Builder onEvent(String operation) {
+            representation.addConfigValue(CONFIG_ON_EVENT, operation);
+            return this;
+        }
+
+        public Builder onCondition(String condition) {
+            representation.setConditions(condition);
+            return this;
+        }
+
+        public Builder concurrency() {
+            representation.setConcurrency(new WorkflowConcurrencyRepresentation());
+            return this;
+        }
+
+        // move this to its own builder if we expand the capabilities of the concurrency settings.
+        public Builder cancelIfRunning() {
+            if (representation.getConcurrency() == null) {
+                representation.setConcurrency(new WorkflowConcurrencyRepresentation());
+            }
+            representation.getConcurrency().setCancelIfRunning(true);
+            return this;
+        }
+
+        public Builder withSteps(WorkflowStepRepresentation... steps) {
+            this.steps.computeIfAbsent(representation, (k) -> new ArrayList<>()).addAll(Arrays.asList(steps));
+            return this;
+        }
+
+        public Builder withConfig(String key, String value) {
+            representation.addConfigValue(key, value);
+            return this;
+        }
+
+        public Builder withConfig(String key, List<String> values) {
+            representation.setConfigValue(key, values);
+            return this;
+        }
+
+        public Builder name(String name) {
+            representation.setName(name);
+            return this;
+        }
+
+        public WorkflowSetRepresentation build() {
+            List<WorkflowRepresentation> workflows = new ArrayList<>();
+
+            for (Builder builder : builders) {
+                if (builder.steps.isEmpty()) {
+                    continue;
+                }
+                for (Entry<WorkflowRepresentation, List<WorkflowStepRepresentation>> entry : builder.steps.entrySet()) {
+                    WorkflowRepresentation workflow = entry.getKey();
+
+                    workflow.setSteps(entry.getValue());
+
+                    workflows.add(workflow);
+                }
+            }
+
+            return new WorkflowSetRepresentation(workflows);
+        }
+    }
+}
