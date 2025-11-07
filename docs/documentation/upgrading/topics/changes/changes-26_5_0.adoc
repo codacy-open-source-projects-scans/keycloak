@@ -30,6 +30,10 @@ For anyone implementing a custom federated user authentication identity provider
 by Keycloak or `AbstractIdentityProvider` you need to update your implementation to implement
 the new `UserAuthenticationIdentityProvider` interface (all methods remain the same, they have just been moved).
 
+Additionally, both `IdentityProviderModel` and `IdentityProviderRepresentation` are now using Boolean values to allow
+configuration like `isHideOnLogin` to be null in order to not include these in Identity Provider types that do
+not need these configurations.
+
 === Accepting only normalized paths in requests
 
 Previously {project_name} accepted HTTP requests with paths containing double dots (`..`) or double slashes (`//`). When processing them, it normalized the path by collapsing double slashes and normalized the path according to RFC3986.
@@ -102,6 +106,13 @@ make sure the users granted with the `realm-admin` role are expected to have thi
 
 The documentation is also updated with additional information about the different types of realm administrators.
 For more information, see link:{adminguide_link}#_fine_grained_permissions[Delegating realm administration using permissions].
+
+=== Added database indexes on `OFFLINE_CLIENT_SESSION` table
+
+This adds new indexes on `OFFLINE_CLIENT_SESSION` table to improve performance when retrieving or deleting client sessions.
+
+If those tables contain more than 300000 entries, {project_name} will skip the index creation by default during the automatic schema migration and instead log the SQL statement on the console during migration to be applied manually after {project_name}'s startup.
+See the link:{upgradingguide_link}[{upgradingguide_name}] for details on how to configure a different limit.
 
 // ------------------------ Deprecated features ------------------------ //
 == Deprecated features

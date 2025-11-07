@@ -170,6 +170,13 @@ public class Picocli {
                 addCommandOptions(cliArgs, cl);
             }
 
+            // ParseResult retain memory. Clear it, so it's not on the stack while the command runs
+            result = null;
+
+            // there's another ParseResult being created under the covers here.
+            // to reuse the previous result either means we need to duplicate the logic in the execute method
+            // or refactor the above logic so that it happens in the command logic
+            // We could also reduce the memory footprint of the ParseResult, but that looks a little hackish
             int exitCode = cmd.execute(argArray);
 
             exit(exitCode);
@@ -218,6 +225,7 @@ public class Picocli {
         if (cliArgs.contains(OPTIMIZED_BUILD_OPTION_LONG) && !wasBuildEverRun()) {
             throw new PropertyException(Messages.optimizedUsedForFirstStartup());
         }
+        warnOnDuplicatedOptionsInCli();
 
         IncludeOptions options = getIncludeOptions(cliArgs, abstractCommand, abstractCommand.getName());
 
@@ -943,6 +951,15 @@ public class Picocli {
         Environment.setProfile(profile);
         if (!cliArgs.contains(HelpAllMixin.HELP_ALL_OPTION)) {
             parsedCommand.ifPresent(PropertyMappers::sanitizeDisabledMappers);
+        }
+    }
+
+    // Show warning about duplicated options in CLI
+    public void warnOnDuplicatedOptionsInCli() {
+        var duplicatedOptionsNames = ConfigArgsConfigSource.getDuplicatedArgNames();
+        if (!duplicatedOptionsNames.isEmpty()) {
+            warn("Duplicated options present in CLI: %s".formatted(String.join(", ", duplicatedOptionsNames)));
+            ConfigArgsConfigSource.clearDuplicatedArgNames();
         }
     }
 

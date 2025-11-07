@@ -21,7 +21,9 @@ import { convertAttributeNameToForm } from "../../util";
 import useIsFeatureEnabled, { Feature } from "../../utils/useIsFeatureEnabled";
 import { FormFields } from "../ClientDetails";
 import { MultiValuedListComponent } from "../../components/dynamic/MultivaluedListComponent";
-import IdentityProviderRepresentation from "@keycloak/keycloak-admin-client/lib/defs/identityProviderRepresentation";
+import IdentityProviderRepresentation, {
+  IdentityProviderType,
+} from "@keycloak/keycloak-admin-client/lib/defs/identityProviderRepresentation";
 import { useAdminClient } from "../../admin-client";
 import { useState } from "react";
 import { IdentityProvidersQuery } from "@keycloak/keycloak-admin-client/lib/resources/identityProviders";
@@ -42,6 +44,12 @@ export const CapabilityConfig = ({
   const protocol = type || watch("protocol");
   const clientAuthentication = watch("publicClient");
   const authorization = watch("authorizationServicesEnabled");
+  const jwtAuthorizationGrantEnabled = watch(
+    convertAttributeNameToForm<FormFields>(
+      "attributes.oauth2.jwt.authorization.grant.enabled",
+    ),
+    false,
+  );
   const isFeatureEnabled = useIsFeatureEnabled();
   const [idps, setIdps] = useState<IdentityProviderRepresentation[]>([]);
   const [search, setSearch] = useState("");
@@ -59,6 +67,7 @@ export const CapabilityConfig = ({
       if (search) {
         params.search = search;
       }
+      params.type = IdentityProviderType.JWT_AUTHORIZATION_GRANT;
       return await adminClient.identityProviders.find(params);
     },
     setIdps,
@@ -425,7 +434,8 @@ export const CapabilityConfig = ({
             ]}
           />
           {isFeatureEnabled(Feature.JWTAuthorizationGrant) &&
-            showIdentityProviders && (
+            showIdentityProviders &&
+            jwtAuthorizationGrantEnabled.toString() === "true" && (
               <MultiValuedListComponent
                 name={convertAttributeNameToForm<FormFields>(
                   "attributes.oauth2.jwt.authorization.grant.idp",
