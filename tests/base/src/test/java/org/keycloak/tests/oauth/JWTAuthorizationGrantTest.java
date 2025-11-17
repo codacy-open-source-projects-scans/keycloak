@@ -1,9 +1,8 @@
 package org.keycloak.tests.oauth;
 
-import org.hamcrest.MatcherAssert;
-import org.hamcrest.Matchers;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
+import java.util.List;
+import java.util.UUID;
+
 import org.keycloak.OAuth2Constants;
 import org.keycloak.broker.oidc.OIDCIdentityProviderConfig;
 import org.keycloak.broker.oidc.OIDCIdentityProviderFactory;
@@ -42,7 +41,10 @@ import org.keycloak.tests.client.authentication.external.ClientAuthIdpServerConf
 import org.keycloak.testsuite.util.IdentityProviderBuilder;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 
-import java.util.UUID;
+import org.hamcrest.MatcherAssert;
+import org.hamcrest.Matchers;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 @KeycloakIntegrationTest(config = JWTAuthorizationGrantTest.JWTAuthorizationGrantServerConfig.class)
 public class JWTAuthorizationGrantTest  {
@@ -269,6 +271,24 @@ public class JWTAuthorizationGrantTest  {
     }
 
     @Test
+    public void testScope() {
+        oAuthClient.openid(false).scope("address phone");
+        try {
+            String jwt = getIdentityProvider().encodeToken(createDefaultAuthorizationGrantToken());
+            AccessTokenResponse response = oAuthClient.jwtAuthorizationGrantRequest(jwt).send();
+            AccessToken token = assertSuccess("test-app", "basic-user", response);
+            MatcherAssert.assertThat(List.of(token.getScope().split(" ")), Matchers.containsInAnyOrder(new String[]{"email", "profile", "address", "phone"}));
+
+            jwt = getIdentityProvider().encodeToken(createDefaultAuthorizationGrantToken());
+            oAuthClient.scope("address phone wrong-scope");
+            response = oAuthClient.jwtAuthorizationGrantRequest(jwt).send();
+            assertFailure("invalid_scope", "Invalid scopes: address phone wrong-scope", response, events.poll());
+        } finally {
+            oAuthClient.openid(true).scope(null);
+        }
+    }
+
+    @Test
     public void testSuccessGrant() {
         String jwt = getIdentityProvider().encodeToken(createDefaultAuthorizationGrantToken());
         AccessTokenResponse response = oAuthClient.jwtAuthorizationGrantRequest(jwt).send();
@@ -351,7 +371,7 @@ public class JWTAuthorizationGrantTest  {
         }
     }
 
-    protected void assertSuccess(String expectedClientId, String username, AccessTokenResponse response) {
+    protected AccessToken assertSuccess(String expectedClientId, String username, AccessTokenResponse response) {
         Assertions.assertTrue(response.isSuccess());
         Assertions.assertNull(response.getRefreshToken());
         AccessToken accessToken = oAuthClient.parseToken(response.getAccessToken(), AccessToken.class);
@@ -364,11 +384,16 @@ public class JWTAuthorizationGrantTest  {
                 .clientId(expectedClientId)
                 .details("grant_type", OAuth2Constants.JWT_AUTHORIZATION_GRANT)
                 .details("username", username);
+        return accessToken;
     }
 
     protected void assertFailure(String expectedErrorDescription, AccessTokenResponse response, EventRepresentation event) {
+        assertFailure("invalid_grant", expectedErrorDescription, response, event);
+    }
+
+    protected void assertFailure(String expectedError, String expectedErrorDescription, AccessTokenResponse response, EventRepresentation event) {
         Assertions.assertFalse(response.isSuccess());
-        Assertions.assertEquals("invalid_request", response.getError());
+        Assertions.assertEquals(expectedError, response.getError());
         Assertions.assertEquals(expectedErrorDescription, response.getErrorDescription());
         EventAssertion.assertError(event)
                 .type(EventType.LOGIN_ERROR)
