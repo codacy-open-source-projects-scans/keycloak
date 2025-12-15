@@ -59,9 +59,9 @@ import org.keycloak.protocol.oid4vc.model.CredentialRequestEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.DisplayObject;
 import org.keycloak.protocol.oid4vc.model.Format;
+import org.keycloak.protocol.oid4vc.model.KeyAttestationsRequired;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
-import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.ClientScopeRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
@@ -88,7 +88,7 @@ import org.hamcrest.Matchers;
 import org.junit.Test;
 
 import static org.keycloak.OID4VCConstants.SIGNED_METADATA_JWT_TYPE;
-import static org.keycloak.constants.Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE;
+import static org.keycloak.constants.OID4VCIConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE;
 import static org.keycloak.jose.jwe.JWEConstants.A256GCM;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP_256;
@@ -538,10 +538,31 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         List<String> signingAlgsSupported = new ArrayList<>(supportedConfig.getCredentialSigningAlgValuesSupported());
         String proofTypesSupportedString = supportedConfig.getProofTypesSupported().toJsonString();
 
+        KeyAttestationsRequired expectedKeyAttestationsRequired = null;
+        if (Boolean.parseBoolean(clientScope.getAttributes().get(CredentialScopeModel.KEY_ATTESTATION_REQUIRED))) {
+            expectedKeyAttestationsRequired = new KeyAttestationsRequired();
+            expectedKeyAttestationsRequired.setKeyStorage(
+                Optional.ofNullable(clientScope.getAttributes()
+                                               .get(CredentialScopeModel.KEY_ATTESTATION_REQUIRED_KEY_STORAGE))
+                        .map(s -> Arrays.asList(s.split(",")))
+                        .orElse(null));
+            expectedKeyAttestationsRequired.setUserAuthentication(
+                Optional.ofNullable(clientScope.getAttributes()
+                                               .get(CredentialScopeModel.KEY_ATTESTATION_REQUIRED_USER_AUTH))
+                        .map(s -> Arrays.asList(s.split(",")))
+                        .orElse(null));
+        }
+        String expectedKeyAttestationsRequiredString = toJsonString(expectedKeyAttestationsRequired);
+
         try {
             withCausePropagation(() -> testingClient.server(TEST_REALM_NAME).run((session -> {
+                KeyAttestationsRequired keyAttestationsRequired = //
+                    Optional.ofNullable(expectedKeyAttestationsRequiredString)
+                            .map(s -> fromJsonString(s, KeyAttestationsRequired.class))
+                            .orElse(null);
                 ProofTypesSupported expectedProofTypesSupported = ProofTypesSupported.parse(session,
-                        List.of(Algorithm.RS256));
+                                                                                            keyAttestationsRequired,
+                                                                                            List.of(Algorithm.RS256));
                 assertEquals(expectedProofTypesSupported,
                         ProofTypesSupported.fromJsonString(proofTypesSupportedString));
 
@@ -782,32 +803,5 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                         session.realms().removeRealm(testRealm.getId());
                     }
                 });
-    }
-
-    public static void extendConfigureTestRealm(RealmRepresentation testRealm, ClientRepresentation clientRepresentation) {
-        if (testRealm.getComponents() == null) {
-            testRealm.setComponents(new MultivaluedHashMap<>());
-        }
-
-        testRealm.getComponents().add("org.keycloak.keys.KeyProvider", getRsaKeyProvider(RSA_KEY));
-        testRealm.getComponents().add("org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder", getCredentialBuilderProvider(Format.JWT_VC));
-
-        if (testRealm.getClients() != null) {
-            testRealm.getClients().add(clientRepresentation);
-        } else {
-            testRealm.setClients(new ArrayList<>(List.of(clientRepresentation)));
-        }
-
-        if (testRealm.getUsers() != null) {
-            testRealm.getUsers().add(OID4VCTest.getUserRepresentation(Map.of(clientRepresentation.getClientId(), List.of("testRole"))));
-        } else {
-            testRealm.setUsers(new ArrayList<>(List.of(OID4VCTest.getUserRepresentation(Map.of(clientRepresentation.getClientId(), List.of("testRole"))))));
-        }
-
-        if (testRealm.getAttributes() != null) {
-            testRealm.getAttributes().put("issuerDid", TEST_DID.toString());
-        } else {
-            testRealm.setAttributes(new HashMap<>(Map.of("issuerDid", TEST_DID.toString())));
-        }
     }
 }

@@ -257,6 +257,10 @@ public class ClientResource {
 
         AdminPermissionsSchema.SCHEMA.throwExceptionIfAdminPermissionClient(session, client.getId());
 
+        ClientRepresentation clientRepresentation = new ClientRepresentation();
+        clientRepresentation.setId(client.getId());
+        clientRepresentation.setClientId(client.getClientId());
+
         try {
             session.clientPolicy().triggerOnEvent(new AdminClientUnregisterContext(client, auth.adminAuth()));
         } catch (ClientPolicyException cpe) {
@@ -264,7 +268,7 @@ public class ClientResource {
         }
 
         if (new ClientManager(new RealmManager(session)).removeClient(realm, client)) {
-            adminEvent.operation(OperationType.DELETE).resourcePath(session.getContext().getUri()).success();
+            adminEvent.operation(OperationType.DELETE).representation(clientRepresentation).resourcePath(session.getContext().getUri()).success();
         }
         else {
             throw new ErrorResponseException(OAuthErrorException.INVALID_REQUEST, "Could not delete client",
@@ -822,17 +826,7 @@ public class ClientResource {
     }
 
     private void updateClientFromRep(ClientRepresentation rep, ClientModel client, KeycloakSession session) throws ModelDuplicateException {
-        UserModel serviceAccount = this.session.users().getServiceAccount(client);
-        boolean serviceAccountScopeAssigned = client.getClientScopes(true).containsKey(ServiceAccountConstants.SERVICE_ACCOUNT_SCOPE);
-        if (Boolean.TRUE.equals(rep.isServiceAccountsEnabled())) {
-            if (serviceAccount == null || !serviceAccountScopeAssigned) {
-                new ClientManager(new RealmManager(session)).enableServiceAccount(client);
-            }
-        } else if (Boolean.FALSE.equals(rep.isServiceAccountsEnabled()) || !client.isServiceAccountsEnabled()) {
-            if (serviceAccount != null || serviceAccountScopeAssigned) {
-                new ClientManager(new RealmManager(session)).disableServiceAccount(client);
-            }
-        }
+        updateClientServiceAccount(session, client, rep.isServiceAccountsEnabled());
 
         if (rep.getClientId() != null && !rep.getClientId().equals(client.getClientId())) {
             new ClientManager(new RealmManager(session)).clientIdChanged(client, rep);
@@ -849,6 +843,20 @@ public class ClientResource {
         RepresentationToModel.updateClient(rep, client, session);
         RepresentationToModel.updateClientProtocolMappers(rep, client);
         updateAuthorizationSettings(rep);
+    }
+
+    public static void updateClientServiceAccount(KeycloakSession session, ClientModel client, Boolean isServiceAccountEnabled) {
+        UserModel serviceAccount = session.users().getServiceAccount(client);
+        boolean serviceAccountScopeAssigned = client.getClientScopes(true).containsKey(ServiceAccountConstants.SERVICE_ACCOUNT_SCOPE);
+        if (Boolean.TRUE.equals(isServiceAccountEnabled)) {
+            if (serviceAccount == null || !serviceAccountScopeAssigned) {
+                new ClientManager(new RealmManager(session)).enableServiceAccount(client);
+            }
+        } else if (Boolean.FALSE.equals(isServiceAccountEnabled) || !client.isServiceAccountsEnabled()) {
+            if (serviceAccount != null || serviceAccountScopeAssigned) {
+                new ClientManager(new RealmManager(session)).disableServiceAccount(client);
+            }
+        }
     }
 
     private void updateAuthorizationSettings(ClientRepresentation rep) {
