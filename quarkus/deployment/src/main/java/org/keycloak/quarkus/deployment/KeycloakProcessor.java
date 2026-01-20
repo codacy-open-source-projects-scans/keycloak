@@ -20,6 +20,8 @@ package org.keycloak.quarkus.deployment;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -139,6 +141,7 @@ import io.quarkus.deployment.builditem.FeatureBuildItem;
 import io.quarkus.deployment.builditem.GeneratedResourceBuildItem;
 import io.quarkus.deployment.builditem.HotDeploymentWatchedFileBuildItem;
 import io.quarkus.deployment.builditem.IndexDependencyBuildItem;
+import io.quarkus.deployment.builditem.RuntimeConfigSetupCompleteBuildItem;
 import io.quarkus.deployment.builditem.StaticInitConfigBuilderBuildItem;
 import io.quarkus.hibernate.orm.deployment.HibernateOrmConfig;
 import io.quarkus.hibernate.orm.deployment.PersistenceXmlDescriptorBuildItem;
@@ -239,8 +242,16 @@ class KeycloakProcessor {
         return new FeatureBuildItem("keycloak");
     }
 
+    /**
+     * Initialize configuration in runtime during the static initialization
+     * <p>
+     * We need to wait for the full configuration initialization on the Quarkus side (see {@link RuntimeConfigSetupCompleteBuildItem}).
+     * <p>
+     * It prevents issues like https://github.com/keycloak/keycloak/issues/45501
+     */
     @Record(ExecutionTime.STATIC_INIT)
     @BuildStep
+    @Consume(RuntimeConfigSetupCompleteBuildItem.class)
     @Produce(ConfigBuildItem.class)
     void initConfig(KeycloakRecorder recorder) {
         // other buildsteps directly use the Config
@@ -1041,9 +1052,13 @@ class KeycloakProcessor {
                 // descriptor is at META-INF/
                 Path basePath = Path.of(url.getPath()).getParent().getParent();
 
+                String path = basePath.resolve(fileName).toString();
+                if (!path.startsWith(url.getProtocol())) {
+                    path = url.getProtocol() + ":" + path;
+                }
                 try {
-                    return basePath.resolve(fileName).toUri().toURL().openStream();
-                } catch (IOException e) {
+                    return new URI(path).toURL().openStream();
+                } catch (IOException | URISyntaxException e) {
                     throw new RuntimeException("Failed to read script file from: " + fileName);
                 }
             });

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { createTestBed } from "../support/testbed.ts";
+import adminClient from "../utils/AdminClient.js";
 import { goToClientScopes } from "../utils/sidebar.ts";
 import { clickSaveButton, selectItem } from "../utils/form.ts";
 import { clickTableRowItem, clickTableToolbarItem } from "../utils/table.ts";
@@ -96,7 +97,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should display OID4VCI fields when protocol is selected", async ({
     page,
   }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     await createClientScope(page, testBed);
 
     await expect(page.locator("#kc-protocol")).toBeVisible();
@@ -134,7 +137,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   });
 
   test("should save and persist OID4VCI field values", async ({ page }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     const testClientScopeName = `oid4vci-test-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
     await createClientScopeAndSelectProtocolAndFormat(
@@ -159,7 +164,6 @@ test.describe("OID4VCI Client Scope Functionality", () => {
     await page
       .getByTestId(OID4VCI_FIELDS.TOKEN_JWS_TYPE)
       .fill(TEST_VALUES.TOKEN_JWS_TYPE);
-
     await selectItem(
       page,
       OID4VCI_FIELDS.SIGNING_ALGORITHM,
@@ -219,7 +223,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should show OID4VCI protocol when global feature is enabled", async ({
     page,
   }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     await createClientScope(page, testBed);
 
     await expect(page.locator("#kc-protocol")).toBeVisible();
@@ -269,7 +275,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should handle OID4VCI protocol selection correctly", async ({
     page,
   }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     await createClientScope(page, testBed);
 
     await expect(page.locator("#kc-protocol")).toBeVisible();
@@ -303,7 +311,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should only show supported format options (dc+sd-jwt and jwt_vc)", async ({
     page,
   }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     await createClientScopeAndSelectProtocolAndFormat(page, testBed);
 
     await page.locator("#kc-vc-format").click();
@@ -323,7 +333,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should show format-specific fields for SD-JWT format", async ({
     page,
   }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     await createClientScopeAndSelectProtocolAndFormat(
       page,
       testBed,
@@ -344,7 +356,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should show format-specific fields for JWT VC format", async ({
     page,
   }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     await createClientScopeAndSelectProtocolAndFormat(
       page,
       testBed,
@@ -365,7 +379,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should save and persist new OID4VCI field values for SD-JWT format", async ({
     page,
   }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     const testClientScopeName = `oid4vci-sdjwt-test-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
     await createClientScopeAndSelectProtocolAndFormat(
@@ -425,10 +441,41 @@ test.describe("OID4VCI Client Scope Functionality", () => {
     );
   });
 
+  test("should omit optional OID4VCI fields when left blank", async ({
+    page,
+  }) => {
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
+    const testClientScopeName = `oid4vci-blank-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    await createClientScopeAndSelectProtocolAndFormat(
+      page,
+      testBed,
+      "SD-JWT VC (dc+sd-jwt)",
+    );
+
+    await page.getByTestId("name").fill(testClientScopeName);
+
+    await clickSaveButton(page);
+    await expect(page.getByText("Client scope created")).toBeVisible();
+
+    await navigateBackAndVerifyClientScope(page, testBed, testClientScopeName);
+
+    await expect(page.getByTestId(OID4VCI_FIELDS.ISSUER_DID)).toHaveValue("");
+    await expect(page.locator(OID4VCI_FIELDS.SIGNING_ALGORITHM)).toHaveText("");
+    await expect(page.locator(OID4VCI_FIELDS.HASH_ALGORITHM)).toContainText(
+      "SHA-256",
+    );
+    await expect(page.getByTestId(OID4VCI_FIELDS.DISPLAY)).toHaveValue("");
+  });
+
   test("should conditionally show/hide fields when format changes", async ({
     page,
   }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     await createClientScopeAndSelectProtocolAndFormat(
       page,
       testBed,
@@ -476,7 +523,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   });
 
   test("should show token_jws_type for all formats", async ({ page }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     await createClientScopeAndSelectProtocolAndFormat(
       page,
       testBed,
@@ -494,7 +543,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should display signing algorithm dropdown with available algorithms", async ({
     page,
   }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     await createClientScopeAndSelectProtocolAndFormat(
       page,
       testBed,
@@ -512,7 +563,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should display hash algorithm dropdown with available algorithms", async ({
     page,
   }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     await createClientScopeAndSelectProtocolAndFormat(
       page,
       testBed,
@@ -529,7 +582,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   });
 
   test("should save and persist hash algorithm value", async ({ page }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     const testClientScopeName = `oid4vci-hash-alg-test-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
     await createClientScopeAndSelectProtocolAndFormat(
@@ -562,7 +617,9 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should default to SHA-256 when hash algorithm is not set", async ({
     page,
   }) => {
-    await using testBed = await createTestBed();
+    await using testBed = await createTestBed({
+      verifiableCredentialsEnabled: true,
+    });
     const testClientScopeName = `oid4vci-hash-default-test-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
     await createClientScopeAndSelectProtocolAndFormat(
@@ -584,5 +641,33 @@ test.describe("OID4VCI Client Scope Functionality", () => {
     await expect(page.locator(OID4VCI_FIELDS.HASH_ALGORITHM)).toContainText(
       "SHA-256",
     );
+  });
+
+  test("should not offer OID4VCI protocol when verifiable credentials are disabled for the realm", async ({
+    page,
+  }) => {
+    await using testBed = await createTestBed();
+
+    await adminClient.updateRealm(testBed.realm, {
+      verifiableCredentialsEnabled: false,
+    });
+
+    try {
+      await createClientScope(page, testBed);
+
+      await expect(page.locator("#kc-protocol")).toBeVisible();
+      await page.locator("#kc-protocol").click();
+
+      await expect(
+        page.getByRole("option", {
+          name: "OpenID for Verifiable Credentials",
+        }),
+      ).toHaveCount(0);
+    } finally {
+      // Re-enable verifiable credentials so other tests see the default behavior
+      await adminClient.updateRealm(testBed.realm, {
+        verifiableCredentialsEnabled: true,
+      });
+    }
   });
 });
