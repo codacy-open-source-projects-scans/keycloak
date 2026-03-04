@@ -264,6 +264,11 @@ public class RealmConfigBuilder {
         return this;
     }
 
+    public RealmConfigBuilder resetClientPolicies() {
+        rep.setParsedClientPolicies(null);
+        return this;
+    }
+
     public RealmConfigBuilder clientPolicy(ClientPolicyRepresentation clienPolicyRep) {
         ClientPoliciesRepresentation clientPolicies = rep.getParsedClientPolicies();
         if (clientPolicies == null) {
@@ -272,6 +277,11 @@ public class RealmConfigBuilder {
         List<ClientPolicyRepresentation> policies = clientPolicies.getPolicies();
         policies.add(clienPolicyRep);
         rep.setParsedClientPolicies(clientPolicies);
+        return this;
+    }
+
+    public RealmConfigBuilder resetClientProfiles() {
+        rep.setParsedClientProfiles(null);
         return this;
     }
 
@@ -387,7 +397,7 @@ public class RealmConfigBuilder {
     }
 
     public RealmConfigBuilder scimEnabled(boolean enabled) {
-        rep.setScimEnabled(enabled);
+        rep.setScimApiEnabled(enabled);
         return this;
     }
 
