@@ -34,6 +34,7 @@ import org.keycloak.common.util.SecretGenerator;
 import org.keycloak.constants.OID4VCIConstants;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.events.EventType;
 import org.keycloak.keys.KeyProvider;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.KeycloakModelUtils;
@@ -53,8 +54,10 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.representations.userprofile.config.UPConfig;
 import org.keycloak.testframework.annotations.InjectAdminClient;
 import org.keycloak.testframework.annotations.InjectClient;
+import org.keycloak.testframework.annotations.InjectEvents;
 import org.keycloak.testframework.annotations.InjectRealm;
 import org.keycloak.testframework.annotations.TestSetup;
+import org.keycloak.testframework.events.Events;
 import org.keycloak.testframework.oauth.OAuthClient;
 import org.keycloak.testframework.oauth.annotations.InjectOAuthClient;
 import org.keycloak.testframework.realm.ClientConfig;
@@ -87,7 +90,7 @@ import static org.keycloak.models.oid4vci.CredentialScopeModel.VC_FORMAT_DEFAULT
 
 /**
  * Abstract base class for OID4VCI Testing
- *
+ * <p>
  * [TODO] Can the server runtime mode be configured by the testcase?
  * Server-side debugging: KC_TEST_SERVER=embedded
  */
@@ -106,7 +109,7 @@ public abstract class OID4VCIssuerTestBase {
     static final String jwtTypeCredentialScopeName = "jwt-credential";
     static final String jwtTypeCredentialConfigurationIdName = "jwt-credential-config-id";
     static final String minimalJwtTypeCredentialScopeName = "vc-with-minimal-config";
-    static final String minimalJwtTypeCredentialScopeIdName = "vc-with-minimal-config-id";
+    static final String minimalJwtTypeCredentialConfigurationIdName = "vc-with-minimal-config-id";
 
     CredentialScopeRepresentation minimalJwtTypeCredentialScope;
     CredentialScopeRepresentation jwtTypeCredentialScope;
@@ -124,9 +127,11 @@ public abstract class OID4VCIssuerTestBase {
     @InjectTimeOffSet
     TimeOffSet timeOffSet;
 
+    @InjectEvents
+    protected Events events;
+
     @InjectWebDriver
     ManagedWebDriver driver;
-
 
     ClientRepresentation client;
 
@@ -500,7 +505,12 @@ public abstract class OID4VCIssuerTestBase {
 
         @Override
         public RealmConfigBuilder configure(RealmConfigBuilder realm) {
-            realm.name(TEST_REALM_NAME);
+            realm.name(TEST_REALM_NAME)
+                    .eventsEnabled(true)
+                    .enabledEventTypes(
+                            EventType.VERIFIABLE_CREDENTIAL_NONCE_REQUEST.name(),
+                            EventType.VERIFIABLE_CREDENTIAL_REQUEST.name()
+                    );
 
             CryptoIntegration.init(this.getClass().getClassLoader());
             realm.verifiableCredentialsEnabled(true);
@@ -535,7 +545,7 @@ public abstract class OID4VCIssuerTestBase {
             realm.addClientScope(createCredentialScope(
                     minimalJwtTypeCredentialScopeName,
                    null,
-                    minimalJwtTypeCredentialScopeIdName,
+                    minimalJwtTypeCredentialConfigurationIdName,
                     null,
                     minimalJwtTypeCredentialScopeName,
                     VC_FORMAT_DEFAULT,
@@ -545,7 +555,7 @@ public abstract class OID4VCIssuerTestBase {
 
             realm.addUser(getUserRepresentation("John Doe", Map.of("did", "did:key:1234"), List.of(CREDENTIAL_OFFER_CREATE.getName()), Collections.emptyMap()));
             realm.addUser(getUserRepresentation("Alice Wonderland", Map.of("did", "did:key:5678"), List.of(), Map.of()));
-
+            
             return realm;
         }
     }

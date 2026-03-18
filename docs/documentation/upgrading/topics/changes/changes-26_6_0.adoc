@@ -63,6 +63,14 @@ In order to improve security, the access control for managing permission tickets
 only users (or service accounts) granted with the `uma-protection` role can manage permission tickets for a given
 resource server. The only exception is the resource server itself, which can manage its permission tickets without the `uma-protection` role.
 
+=== SAML token for Identity Brokering APIs changed to JSON
+
+When {project_name} delegates the authentication to an Identity Provider, the brokering APIs can be called to retrieve the token received from the external IdP. In turn, that token can be used to get extra information for the user or to directly invoke endpoints on the external provider.
+
+While for the OpenID Connect brokers, the token was the JSON token endpoint response; for SAML brokers, the stored token was the SAML response but in raw mode. That means that the token was different depending the binding used (`POST`, `REDIRECT`...), the assertion could be encrypted and so on and so forth. Since this version, the token returned for SAML providers is also a common JSON response in which the `access_token` member is the base64url-encoded SAML 2.0 assertion. This way, the response is aligned with the OIDC providers and with the majority of standards, for example link:https://datatracker.ietf.org/doc/html/rfc8693[OAuth 2.0 Token Exchange (RFC8693)] or link:https://datatracker.ietf.org/doc/html/rfc7522[Security Assertion Markup Language (SAML) 2.0 Profile for OAuth 2.0 Client Authentication and Authorization Grants (RFC7522)].
+
+For more information about brokering, see link:{developerguide_link}#_identity_brokering_apis[Identity Brokering APIs].
+
 // ------------------------ Notable changes ------------------------ //
 == Notable changes
 
@@ -86,12 +94,11 @@ See the section https://www.keycloak.org/server/reverseproxy#graceful-http-shutd
 
 With `proxy-headers` set to `xforwarded`, the server can determine the proxy context path from the `X-Forwarded-Prefix` header.
 
-=== New database indexes on the `BROKER_LINK` table
+=== New brute force locking mechanism
 
-The `BROKER_LINK` table now contains two additional indexes `IDX_BROKER_LINK_USER_ID` and `IDX_BROKER_LINK_IDENTITY_PROVIDER` to improve performance.
+There is a new brute force locking mechanism applied to all brute force modes. It is called `Secondary Authentication Failures Lockout`. Brute force protector is counting secondary authentication failures only (for example OTP) and when maximum specified number is reached the account is permanently locked even in temporary locking modes. This prevents attacks on second factor authenticators such as OTP when attacker already guessed the password.
 
-If the table contains more than 300000 entries, {project_name} will skip the index creation by default during the automatic schema migration and instead log the SQL statement on the console during migration to be applied manually after {project_name}'s startup.
-See the link:{upgradingguide_link}[{upgradingguide_name}] for details on how to configure a different limit.
+This new brute force locking mechanism also changes original behavior of brute force protection. It is applied only to a subset of authentication mechanisms (passwords, OTP and recovery codes).
 
 === Client secret authentication method
 
@@ -123,27 +130,6 @@ When upgrading the external {jdgserver_name}, the following changes are necessar
 
 1. Enable the legacy metrics to ensure that alerts and dashboard still receive the same metrics as before. See https://www.keycloak.org/observability/metrics-for-troubleshooting-external-infinispan-multi-cluster[External Infinispan metrics] and where to add `legacy: true` to the ConfigMap.
 2. Define `indexing.startupMode=NONE` in your Cache configurations. See https://www.keycloak.org/high-availability/multi-cluster/deploy-infinispan-kubernetes-crossdc[Deploying Infinispan] for examples.
-
-=== Usage of virtual threads for embedded caches
-
-Previously virtual threads were used when at least two CPU cores were available.
-Starting with this version, virtual threads are only used when at least four CPU cores are available.
-This change should prevent deadlocks due to pinned virtual threads.
-
-=== HTTP Access log does not contain specific sensitive information
-
-Specific sensitive information is omitted from the HTTP Access log, such as the value of the `Authorization` HTTP header. Moreover, values of specific sensitive {project_name} cookies, such as `KEYCLOAK_SESSION`, `KEYCLOAK_IDENTITY`, or `AUTH_SESSION_ID`, are also omitted.
-
-=== Rejecting URL paths with semicolons
-
-Previously {project_name} accepted HTTP requests with paths containing a semicolon (`;`).
-When processing them, it handled them according to RFC 3986 as a separator for matrix parameters, which basically ignored those parts.
-As this has led to hard-to-configure URL filtering, for example, in reverse proxies, this is now disabled, and {project_name} responds with an HTTP 400 response code.
-
-To analyze rejected requests in the server log, enable debug logging for `org.keycloak.quarkus.runtime.services.RejectNonNormalizedPathFilter`.
-
-To revert to the previous behavior and to accept matrix parameters set the option `http-accept-non-normalized-paths` to `true`.
-With this configuration, enable and review the HTTP access log to identify problematic requests.
 
 === Adjusted default clock-skew for not-before JWT token checks
 
