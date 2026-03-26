@@ -1,13 +1,13 @@
-package org.keycloak.tests.workflow.config;
+package org.keycloak.tests.common;
 
-import org.keycloak.common.Profile.Feature;
 import org.keycloak.testframework.server.KeycloakServerConfig;
 import org.keycloak.testframework.server.KeycloakServerConfigBuilder;
 
-public class WorkflowsServerConfig implements KeycloakServerConfig {
+public class CustomProvidersServerConfig implements KeycloakServerConfig {
 
     @Override
     public KeycloakServerConfigBuilder configure(KeycloakServerConfigBuilder config) {
-        return config.features(Feature.WORKFLOWS);
+        return config.dependency("org.keycloak.tests", "keycloak-tests-custom-providers");
     }
+
 }
