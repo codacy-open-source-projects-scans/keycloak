@@ -9,8 +9,8 @@ import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.representations.idm.ClientScopeRepresentation;
-import org.keycloak.tests.oid4vc.OID4VCBasicWallet;
 import org.keycloak.tests.oid4vc.OID4VCIssuerTestBase;
+import org.keycloak.tests.oid4vc.OID4VCProofTestUtils;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.testsuite.util.oauth.AuthorizationEndpointResponse;
 import org.keycloak.testsuite.util.oauth.oid4vc.CredentialIssuerMetadataResponse;
@@ -41,7 +41,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
 
     private void clearLoginState() {
         try {
-            new OID4VCBasicWallet(keycloak, oauth).logout("john");
+            wallet.logout("john");
         } catch (Exception e) {
             log.warn("Failed to logout test user before authorization-details flow", e);
         }
@@ -108,8 +108,10 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         String credentialConfigurationId = authDetailResponse.getCredentialConfigurationId();
         assertNotNull(credentialConfigurationId, "Credential configuration id should not be null");
 
+        String cNonce = oauth.oid4vc().nonceRequest().send().getNonce();
         Oid4vcCredentialResponse credentialResponse = oauth.oid4vc().credentialRequest()
                 .credentialIdentifier(credentialIdentifier)
+                .proofs(OID4VCProofTestUtils.jwtProofs(ctx.credentialIssuer.getCredentialIssuer(), cNonce))
                 .bearerToken(accessToken)
                 .send();
 

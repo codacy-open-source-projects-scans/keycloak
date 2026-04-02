@@ -5,20 +5,22 @@ import java.util.List;
 
 import org.keycloak.TokenVerifier;
 import org.keycloak.admin.client.resource.UserResource;
+import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.representations.JsonWebToken;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.testframework.annotations.KeycloakIntegrationTest;
-import org.keycloak.tests.oid4vc.OID4VCBasicWallet;
 import org.keycloak.tests.oid4vc.OID4VCIssuerTestBase;
 import org.keycloak.tests.oid4vc.OID4VCTestContext;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import static org.keycloak.tests.oid4vc.OID4VCProofTestUtils.jwtProofs;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -41,14 +43,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @KeycloakIntegrationTest(config = OID4VCIssuerTestBase.VCTestServerWithPreAuthCodeEnabled.class)
 public class OID4VCredentialOfferPreAuthTest extends OID4VCIssuerTestBase {
 
-    OID4VCBasicWallet wallet;
-
-    @BeforeEach
-    void beforeEach() {
-        wallet = new OID4VCBasicWallet(keycloak, oauth);
-        wallet.logout();
-    }
-
     @Test
     public void testPreAuthOffer_DisabledUser() {
 
@@ -62,7 +56,7 @@ public class OID4VCredentialOfferPreAuthTest extends OID4VCIssuerTestBase {
 
         try {
             IllegalStateException error = assertThrows(IllegalStateException.class,
-                    () -> wallet.createPreAuthCredentialOffer(ctx, ctx.getHolder()));
+                    () -> wallet.createCredentialOfferPreAuth(ctx, ctx.getHolder()));
             assertTrue(error.getMessage().contains("User 'alice' disabled"), error.getMessage());
         } finally {
             userRep.setEnabled(true);
@@ -77,41 +71,12 @@ public class OID4VCredentialOfferPreAuthTest extends OID4VCIssuerTestBase {
 
         // Create Pre-Authorized CredentialOffer
         //
-        CredentialsOffer credOffer = wallet.createPreAuthCredentialOffer(ctx, null);
+        CredentialsOffer credOffer = wallet.createCredentialOfferPreAuth(ctx, null);
         String preAuthCode = credOffer.getPreAuthorizedCode();
 
         // Redeem Pre-Authorized Code for AccessToken
         //
-        AccessTokenResponse tokenResponse = wallet.preAuthAccessTokenRequest(ctx, preAuthCode).send();
-        assertTrue(tokenResponse.isSuccess(), tokenResponse.getErrorDescription());
-
-        String accessToken = wallet.validateHolderAccessToken(ctx, tokenResponse);
-        assertNotNull(accessToken,"No accessToken");
-
-        String authorizedIdentifier = ctx.getAuthorizedCredentialIdentifier();
-        assertNotNull(authorizedIdentifier,"No authorized credential identifier");
-
-        // Send the CredentialRequest
-        //
-        CredentialResponse credResponse = wallet.credentialRequest(ctx, accessToken)
-                .credentialIdentifier(authorizedIdentifier)
-                .send().getCredentialResponse();
-
-        verifyCredentialResponse(ctx, ctx.getIssuer(), credResponse);
-    }
-
-    @Test
-    public void testPreAuthOffer_Targeted() throws Exception {
-        var ctx = new OID4VCTestContext(client, jwtTypeCredentialScope);
-
-        // Create Pre-Authorized CredentialOffer
-        //
-        CredentialsOffer credOffer = wallet.createPreAuthCredentialOffer(ctx, ctx.getHolder());
-        String preAuthCode = credOffer.getPreAuthorizedCode();
-
-        // Redeem Pre-Authorized Code for AccessToken
-        //
-        AccessTokenResponse tokenResponse = wallet.preAuthAccessTokenRequest(ctx, preAuthCode).send();
+        AccessTokenResponse tokenResponse = wallet.accessTokenRequestPreAuth(ctx, preAuthCode).send();
         assertTrue(tokenResponse.isSuccess(), tokenResponse.getErrorDescription());
 
         String accessToken = wallet.validateHolderAccessToken(ctx, tokenResponse);
@@ -124,6 +89,37 @@ public class OID4VCredentialOfferPreAuthTest extends OID4VCIssuerTestBase {
         //
         CredentialResponse credResponse = wallet.credentialRequest(ctx, accessToken)
                 .credentialIdentifier(authorizedIdentifier)
+                .proofs(getJwtProofs(ctx))
+                .send().getCredentialResponse();
+
+        verifyCredentialResponse(ctx, ctx.getIssuer(), credResponse);
+    }
+
+    @Test
+    public void testPreAuthOffer_Targeted() throws Exception {
+        var ctx = new OID4VCTestContext(client, jwtTypeCredentialScope);
+
+        // Create Pre-Authorized CredentialOffer
+        //
+        CredentialsOffer credOffer = wallet.createCredentialOfferPreAuth(ctx, ctx.getHolder());
+        String preAuthCode = credOffer.getPreAuthorizedCode();
+
+        // Redeem Pre-Authorized Code for AccessToken
+        //
+        AccessTokenResponse tokenResponse = wallet.accessTokenRequestPreAuth(ctx, preAuthCode).send();
+        assertTrue(tokenResponse.isSuccess(), tokenResponse.getErrorDescription());
+
+        String accessToken = wallet.validateHolderAccessToken(ctx, tokenResponse);
+        assertNotNull(accessToken, "No accessToken");
+
+        String authorizedIdentifier = ctx.getAuthorizedCredentialIdentifier();
+        assertNotNull(authorizedIdentifier, "No authorized credential identifier");
+
+        // Send the CredentialRequest
+        //
+        CredentialResponse credResponse = wallet.credentialRequest(ctx, accessToken)
+                .credentialIdentifier(authorizedIdentifier)
+                .proofs(getJwtProofs(ctx))
                 .send().getCredentialResponse();
 
         verifyCredentialResponse(ctx, ctx.getHolder(), credResponse);
@@ -144,5 +140,11 @@ public class OID4VCredentialOfferPreAuthTest extends OID4VCIssuerTestBase {
         assertEquals(List.of(scope), credential.getType());
         assertEquals(URI.create("did:web:test.org"), credential.getIssuer());
         assertEquals(expUser + "@email.cz", credential.getCredentialSubject().getClaims().get("email"));
+    }
+
+    private Proofs getJwtProofs(OID4VCTestContext ctx) {
+        String cNonce = oauth.oid4vc().nonceRequest().send().getNonce();
+        CredentialIssuer issuerMetadata = wallet.getIssuerMetadata(ctx);
+        return jwtProofs(issuerMetadata.getCredentialIssuer(), cNonce);
     }
 }

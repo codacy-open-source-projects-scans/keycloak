@@ -941,6 +941,8 @@ public class OID4VCIssuerEndpoint {
         SupportedCredentialConfiguration supportedCredential =
                 OID4VCIssuerWellKnownProvider.toSupportedCredentialConfiguration(session, authorizedCredentialScope);
 
+        enforceProofContractForCredential(supportedCredential, credentialRequest.getProofs());
+
         // Get the list of all proofs (handles single proof, multiple proofs, or none)
         List<String> allProofs = getAllProofs(credentialRequest);
 
@@ -958,8 +960,7 @@ public class OID4VCIssuerEndpoint {
             String proofType = originalProofs != null ? originalProofs.getProofType() : null;
 
             for (String currentProof : allProofs) {
-                Proofs proofForIteration = new Proofs();
-                proofForIteration.setProofByType(proofType, currentProof);
+                Proofs proofForIteration = Proofs.create(proofType, currentProof);
                 // Creating credential with keybinding to the current proof
                 credentialRequest.setProofs(proofForIteration);
                 Object theCredential = getCredential(authResult, supportedCredential, tokenAuthDetail, credentialRequest, eventBuilder);
@@ -1250,6 +1251,26 @@ public class OID4VCIssuerEndpoint {
 
         // Validation already happened in normalizeProofFields, so we can safely extract proofs
         return proofs.getAllProofs();
+    }
+
+    private void enforceProofContractForCredential(SupportedCredentialConfiguration credentialConfiguration, Proofs proofs) {
+        boolean proofConfigured = credentialConfiguration != null
+                && credentialConfiguration.getProofTypesSupported() != null
+                && credentialConfiguration.getProofTypesSupported().getSupportedProofTypes() != null
+                && !credentialConfiguration.getProofTypesSupported().getSupportedProofTypes().isEmpty();
+        boolean proofProvided = proofs != null && !proofs.getPresentProofTypes().isEmpty();
+
+        if (proofConfigured && !proofProvided) {
+            String message = "The 'proofs' parameter is required for this credential configuration.";
+            LOGGER.debug(message);
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF, message));
+        }
+
+        if (!proofConfigured && proofProvided) {
+            String message = "The 'proofs' parameter is not supported for this credential configuration.";
+            LOGGER.debug(message);
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF, message));
+        }
     }
 
     private void validateProofTypes(Proofs proofs) {
