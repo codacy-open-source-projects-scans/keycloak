@@ -8,11 +8,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 
+import org.keycloak.OID4VCConstants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.jose.jwk.JWK;
+import org.keycloak.jose.jwk.JWKBuilder;
 import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
@@ -47,13 +51,12 @@ import static org.keycloak.OAuth2Constants.AUTHORIZATION_DETAILS;
 import static org.keycloak.constants.OID4VCIConstants.CREDENTIAL_OFFER_CREATE;
 import static org.keycloak.tests.oid4vc.OID4VCIssuerTestBase.TEST_PASSWORD;
 import static org.keycloak.tests.oid4vc.OID4VCIssuerTestBase.VCTestRealmConfig.TEST_REALM_NAME;
-import static org.keycloak.tests.oid4vc.OID4VCProofTestUtils.createEcKeyPair;
 import static org.keycloak.tests.oid4vc.OID4VCTestContext.ACCESS_TOKEN_RESPONSE_ATTACHMENT_KEY;
 import static org.keycloak.tests.oid4vc.OID4VCTestContext.AUTHORIZATION_SERVER_METADATA_ATTACHMENT_KEY;
 import static org.keycloak.tests.oid4vc.OID4VCTestContext.AttachmentKey;
-import static org.keycloak.tests.oid4vc.OID4VCTestContext.CREDENTIALS_OFFER_ATTACHMENT_KEY;
-import static org.keycloak.tests.oid4vc.OID4VCTestContext.CREDENTIALS_OFFER_URI_ATTACHMENT_KEY;
-import static org.keycloak.tests.oid4vc.OID4VCTestContext.CREDENTIAL_RESPONSE_ATTACHMENT_KEY;
+import static org.keycloak.tests.oid4vc.OID4VCTestContext.CREDENTIALS_OFFER_RESPONSE_ATTACHMENT_KEY;
+import static org.keycloak.tests.oid4vc.OID4VCTestContext.CREDENTIALS_OFFER_URI_RESPONSE_ATTACHMENT_KEY;
+import static org.keycloak.tests.oid4vc.OID4VCTestContext.CREDENTIALS_RESPONSE_ATTACHMENT_KEY;
 import static org.keycloak.tests.oid4vc.OID4VCTestContext.ISSUER_METADATA_ATTACHMENT_KEY;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -86,9 +89,9 @@ public class OID4VCBasicWallet {
     }
 
     /**
-     * A composite action to create a credential offer with 'authorization_code' grant
+     * A composite action to create a credential offer uri with caller provided properties
      */
-    public CredentialsOffer createCredentialOfferAuthCode(OID4VCTestContext ctx, String targetUser) {
+    public CredentialOfferURI createCredentialOfferUri(OID4VCTestContext ctx, Consumer<CredentialOfferUriRequest> consumer) {
 
         // Get Issuer AccessToken
         //
@@ -100,79 +103,34 @@ public class OID4VCBasicWallet {
                 List.of(), List.of(ctx.getScope()),
                 List.of(CREDENTIAL_OFFER_CREATE.getName()), List.of());
 
-        // Create Authorized Code CredentialOffer
+        // Create CredentialOfferURI
         //
-        CredentialOfferURI credOfferUri;
+        CredentialOfferUriResponse credOfferUriRes;
         try {
-            credOfferUri = createCredentialOffer(ctx, ctx.getCredentialConfigurationId())
-                    .preAuthorized(false)
-                    .targetUser(targetUser)
-                    .bearerToken(issToken)
-                    .send().getCredentialOfferURI();
+            String credConfigId = ctx.getCredentialConfigurationId();
+            var uriRequest = credentialOfferUriRequest(ctx, credConfigId);
+            consumer.accept(uriRequest.bearerToken(issToken));
+            credOfferUriRes = uriRequest.send();
         } finally {
             logout(ctx.getIssuer());
         }
 
-        // Fetch the CredentialsOffer
-        //
-        CredentialsOffer credOffer = credentialsOfferRequest(ctx, credOfferUri)
-                .send().getCredentialsOffer();
-
-        String issuerState = credOffer.getIssuerState();
-        assertNotNull(issuerState, "No IssuerState");
-
-        return credOffer;
+        return credOfferUriRes.getCredentialOfferURI();
     }
 
     /**
-     * A composite actions to create a credential offer with 'pre-authorized_code' grant
+     * A composite action to create a credential offer with caller provided properties
      */
-    public CredentialsOffer createCredentialOfferPreAuth(OID4VCTestContext ctx, String targetUser) {
+    public CredentialsOffer createCredentialOffer(OID4VCTestContext ctx, Consumer<CredentialOfferUriRequest> consumer) {
 
-        // Get Issuer AccessToken
+        // Create CredentialOfferURI
         //
-        AccessTokenResponse issTokenResponse = getAccessToken(ctx.getIssuer());
-        assertNotNull(issTokenResponse.getAccessToken(), "No accessToken");
-
-        // Exclude scope: <credScope>
-        // Require role: credential-offer-create
-        String issToken = validateIssuerAccessToken(issTokenResponse,
-                List.of(), List.of(ctx.getScope()),
-                List.of(CREDENTIAL_OFFER_CREATE.getName()), List.of());
-
-        // Create Pre-Authorized CredentialOffer
-        //
-        CredentialOfferURI credOfferUri;
-        try {
-            credOfferUri = createCredentialOffer(ctx, ctx.getCredentialConfigurationId())
-                    .preAuthorized(true)
-                    .targetUser(targetUser)
-                    .bearerToken(issToken)
-                    .send().getCredentialOfferURI();
-        } finally {
-            logout(ctx.getIssuer());
-        }
+        CredentialOfferURI credOfferUri = createCredentialOfferUri(ctx, consumer);
 
         // Fetch the CredentialsOffer
         //
-        CredentialsOffer credOffer = credentialsOfferRequest(ctx, credOfferUri)
-                .send().getCredentialsOffer();
-
-        String preAuthCode = credOffer.getPreAuthorizedCode();
-        assertNotNull(preAuthCode, "No PreAuth Code");
-
-        return credOffer;
-    }
-
-    public CredentialOfferUriRequest createCredentialOffer(OID4VCTestContext ctx, String credConfigId) {
-        CredentialOfferUriRequest request = new CredentialOfferUriRequest(oauth, credConfigId) {
-            public CredentialOfferUriResponse send() {
-                CredentialOfferUriResponse response = super.send();
-                ctx.putAttachment(CREDENTIALS_OFFER_URI_ATTACHMENT_KEY, response.getCredentialOfferURI());
-                return response;
-            }
-        };
-        return request;
+        CredentialOfferResponse credOfferResponse = credentialsOfferRequest(ctx, credOfferUri).send();
+        return credOfferResponse.getCredentialsOffer();
     }
 
     public AccessTokenResponse getAccessToken(String username, String... scope) {
@@ -204,6 +162,46 @@ public class OID4VCBasicWallet {
         return authServerMetadata;
     }
 
+    public Proofs generateAttestationProof(OID4VCTestContext ctx, Consumer<KeyWrapper> attestationKeyConsumer) {
+        KeyWrapper attestationKey = getECKeyPair(ctx, "attestationKey");
+        KeyWrapper proofKey = getECKeyPair(ctx, "proofKey");
+
+        JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
+        proofJwk.setKeyId(proofKey.getKid());
+        proofJwk.setAlgorithm(proofKey.getAlgorithm());
+
+        String nonce = oauth.oid4vc().doNonceRequest().getNonce();
+        Proofs proofs = Proofs.create(ProofType.ATTESTATION, OID4VCProofTestUtils.generateAttestationProof(
+                attestationKey,
+                nonce,
+                List.of(proofJwk),
+                List.of(OID4VCConstants.KeyAttestationResistanceLevels.HIGH),
+                List.of(OID4VCConstants.KeyAttestationResistanceLevels.HIGH),
+                null
+        ));
+        attestationKeyConsumer.accept(attestationKey);
+        return proofs;
+    }
+
+    public Proofs generateJwtProof(OID4VCTestContext ctx) {
+        String aud = getIssuerMetadata(ctx).getCredentialIssuer();
+        String nonce = oauth.oid4vc().doNonceRequest().getNonce();
+        KeyWrapper kw = getECKeyPair(ctx, null);
+        return Proofs.create(ProofType.JWT, OID4VCProofTestUtils.generateJwtProof(aud, kw, nonce));
+    }
+
+    public KeyWrapper getECKeyPair(OID4VCTestContext ctx, String keyId) {
+        String cacheKey = keyId != null ? keyId : ctx.getHolder() + "_key";
+        AttachmentKey<KeyWrapper> attachmentKey = new AttachmentKey<>(cacheKey, KeyWrapper.class);
+        KeyWrapper kw = ctx.getAttachment(attachmentKey);
+        if (kw == null) {
+            kw = OID4VCProofTestUtils.createEcKeyPair();
+            if (keyId != null) kw.setKid(keyId);
+            ctx.putAttachment(attachmentKey, kw);
+        }
+        return kw;
+    }
+
     public AuthorizationEndpointRequest authorizationRequest() {
         AuthorizationEndpointRequest request = new AuthorizationEndpointRequest() {
             public AuthorizationEndpointResponse send(String username, String password) {
@@ -212,24 +210,6 @@ public class OID4VCBasicWallet {
             }
         };
         return request;
-    }
-
-    public Proofs generateJwtProof(OID4VCTestContext ctx, String user) {
-        String aud = getIssuerMetadata(ctx).getCredentialIssuer();
-        String nonce = oauth.oid4vc().nonceRequest().send().getNonce();
-        KeyWrapper kw = getECKeyPair(ctx, user, null);
-        return Proofs.create(ProofType.JWT, OID4VCProofTestUtils.generateJwtProof(aud, kw, nonce));
-    }
-
-    public KeyWrapper getECKeyPair(OID4VCTestContext ctx, String user, String keyId) {
-        String cacheKey = user + (keyId != null ? "_" + keyId : "");
-        AttachmentKey<KeyWrapper> attachmentKey = new AttachmentKey<>(cacheKey, KeyWrapper.class);
-        KeyWrapper kw = ctx.getAttachment(attachmentKey);
-        if (kw == null) {
-            kw = createEcKeyPair();
-            ctx.putAttachment(attachmentKey, kw);
-        }
-        return kw;
     }
 
     public AccessTokenRequest accessTokenRequest(OID4VCTestContext ctx, String authCode) {
@@ -254,11 +234,22 @@ public class OID4VCBasicWallet {
         return request;
     }
 
+    public CredentialOfferUriRequest credentialOfferUriRequest(OID4VCTestContext ctx, String credConfigId) {
+        CredentialOfferUriRequest request = new CredentialOfferUriRequest(oauth, credConfigId) {
+            public CredentialOfferUriResponse send() {
+                CredentialOfferUriResponse response = super.send();
+                ctx.putAttachment(CREDENTIALS_OFFER_URI_RESPONSE_ATTACHMENT_KEY, response);
+                return response;
+            }
+        };
+        return request;
+    }
+
     public CredentialOfferRequest credentialsOfferRequest(OID4VCTestContext ctx, CredentialOfferURI credOfferUri) {
         CredentialOfferRequest request = new CredentialOfferRequest(oauth, credOfferUri) {
             public CredentialOfferResponse send() {
                 CredentialOfferResponse response = super.send();
-                ctx.putAttachment(CREDENTIALS_OFFER_ATTACHMENT_KEY, response.getCredentialsOffer());
+                ctx.putAttachment(CREDENTIALS_OFFER_RESPONSE_ATTACHMENT_KEY, response);
                 return response;
             }
         };
@@ -269,8 +260,10 @@ public class OID4VCBasicWallet {
         Oid4vcCredentialRequest request = new Oid4vcCredentialRequest(oauth, new CredentialRequest()) {
             public Oid4vcCredentialResponse send() {
                 Oid4vcCredentialResponse response = super.send();
-                CredentialResponse credentialResponse = response.getCredentialResponse();
-                ctx.putAttachment(CREDENTIAL_RESPONSE_ATTACHMENT_KEY, credentialResponse);
+                ctx.putAttachment(CREDENTIALS_RESPONSE_ATTACHMENT_KEY, response);
+                if (response.isSuccess()) {
+                    CredentialResponse credentialResponse = response.getCredentialResponse();
+                }
                 return response;
             }
         };
