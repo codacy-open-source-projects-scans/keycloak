@@ -48,7 +48,7 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Test for browser back/forward/refresh buttons
@@ -70,7 +70,7 @@ public class BrowserButtonsTest extends AbstractChangeImportedUserPasswordsTest 
                 .build();
 
         generatePasswords("login-test");
-        userId = AdminApiUtil.createUserAndResetPasswordWithAdminClient(testRealm(), user, getPassword("login-test"), true);
+        userId = AdminApiUtil.createUserAndResetPasswordWithAdminClient(managedRealm.admin(), user, getPassword("login-test"), true);
         expectedMessagesCount = 0;
         getCleanup().addUserId(userId);
 

@@ -55,11 +55,11 @@ import static org.keycloak.models.Constants.ACCOUNT_CONSOLE_CLIENT_ID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * @author <a href="mailto:ssilvert@redhat.com">Stan Silvert</a>
@@ -351,7 +351,7 @@ public class LinkedAccountsRestServiceTest extends AbstractTestRealmKeycloakTest
 	}
 
 	private void runUsingShowInAccountConsoleValue(String identityProviderAlias, String showInAccountConsoleValue, ThrowingRunnable runnable) throws IOException {
-		IdentityProviderResource identityProviderResource = testRealm().identityProviders().get(identityProviderAlias);
+		IdentityProviderResource identityProviderResource = managedRealm.admin().identityProviders().get(identityProviderAlias);
 		IdentityProviderRepresentation representation = identityProviderResource.toRepresentation();
 		String attribute = "showInAccountConsole";
 		String genuineValue = representation.getConfig().get(attribute);

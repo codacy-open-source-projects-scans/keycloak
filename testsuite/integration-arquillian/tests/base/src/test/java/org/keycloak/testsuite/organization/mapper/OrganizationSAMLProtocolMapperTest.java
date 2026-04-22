@@ -41,8 +41,8 @@ import org.keycloak.testsuite.util.Matchers;
 import org.keycloak.testsuite.util.SamlClient;
 import org.keycloak.testsuite.util.SamlClientBuilder;
 
-import org.junit.Assert;
 import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
 
 import static org.keycloak.testsuite.util.SamlStreams.assertionsUnencrypted;
 import static org.keycloak.testsuite.util.SamlStreams.attributeStatements;
@@ -53,12 +53,12 @@ public class OrganizationSAMLProtocolMapperTest extends AbstractOrganizationTest
 
     @Test
     public void testAttribute() {
-        OrganizationResource organization = testRealm().organizations().get(createOrganization().getId());
+        OrganizationResource organization = managedRealm.admin().organizations().get(createOrganization().getId());
         IdentityProviderRepresentation broker = organization.identityProviders().getIdentityProviders().get(0);
         organization.identityProviders().get(broker.getAlias()).delete().close();
         addMember(organization);
         String clientId = "saml-client";
-        testRealm().clients().create(ClientBuilder.create()
+        managedRealm.admin().clients().create(ClientBuilder.create()
                 .protocol(SamlProtocol.LOGIN_PROTOCOL)
                 .clientId(clientId)
                 .redirectUris("*")
@@ -81,9 +81,9 @@ public class OrganizationSAMLProtocolMapperTest extends AbstractOrganizationTest
                 .filter(attribute -> OrganizationMembershipMapper.ORGANIZATION_ATTRIBUTE_NAME.equals(attribute.getName()))
                 .findAny()
                 .orElse(null);
-        Assert.assertNotNull(orgAttribute);
+        Assertions.assertNotNull(orgAttribute);
         List<Object> values = orgAttribute.getAttributeValue();
-        Assert.assertEquals(1, values.size());
-        Assert.assertEquals(organizationName, values.get(0));
+        Assertions.assertEquals(1, values.size());
+        Assertions.assertEquals(organizationName, values.get(0));
     }
 }
