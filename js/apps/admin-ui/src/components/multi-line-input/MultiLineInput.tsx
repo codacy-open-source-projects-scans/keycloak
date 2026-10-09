@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { FormErrorText } from "@keycloak/keycloak-ui-shared";
 
 function stringToMultiline(value?: string): string[] {
-  return typeof value === "string" ? value.split("##") : [value || ""];
+  return typeof value === "string" ? value.split("##") : [""];
 }
 
 function toStringValue(formValue: string[]): string {
@@ -99,7 +99,9 @@ export const MultiLineInput = ({
     register(name, {
       validate: (value) =>
         isRequired &&
-        (stringify ? value : toStringValue(value || [])).length === 0
+        (stringify ? stringToMultiline(value) : value || []).filter(
+          (s: string) => s.trim(),
+        ).length === 0
           ? t("required")
           : undefined,
     });

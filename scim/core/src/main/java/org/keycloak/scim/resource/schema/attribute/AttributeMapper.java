@@ -3,12 +3,10 @@ package org.keycloak.scim.resource.schema.attribute;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 import org.keycloak.common.util.TriConsumer;
 import org.keycloak.models.Model;
-import org.keycloak.scim.resource.ResourceTypeRepresentation;
 import org.keycloak.util.JsonSerialization;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,19 +16,19 @@ import com.fasterxml.jackson.databind.JsonNode;
  *
  * @see Attribute
  */
-public class AttributeMapper<M extends Model, R extends ResourceTypeRepresentation> {
+public class AttributeMapper<M extends Model, R> {
 
     private Attribute<M, R> attribute;
     private final TriConsumer<M, String, ?> modelSetter;
     private TriConsumer<M, String, ?> modelRemover;
     private TriConsumer<M, String, ?> modelAdder;
-    private final BiConsumer<R, ?> representationSetter;
+    private final TriConsumer<Attribute<M, R>, R, ?> representationSetter;
 
-    AttributeMapper(TriConsumer<M, String, ?> modelSetter, BiConsumer<R, ?> representationSetter) {
+    AttributeMapper(TriConsumer<M, String, ?> modelSetter, TriConsumer<Attribute<M, R>, R, ?> representationSetter) {
         this(modelSetter, representationSetter, null, null);
     }
 
-    AttributeMapper(TriConsumer<M, String, ?> modelSetter, BiConsumer<R, ?> representationSetter, TriConsumer<M, String, ?> modelRemover, TriConsumer<M, String, ?> modelAdder) {
+    AttributeMapper(TriConsumer<M, String, ?> modelSetter, TriConsumer<Attribute<M, R>, R, ?> representationSetter, TriConsumer<M, String, ?> modelRemover, TriConsumer<M, String, ?> modelAdder) {
         this.modelSetter = modelSetter;
         this.representationSetter = representationSetter;
         this.modelRemover = modelRemover;
@@ -39,7 +37,14 @@ public class AttributeMapper<M extends Model, R extends ResourceTypeRepresentati
 
     public void setValue(R representation, Object value) {
         if (representationSetter != null) {
-            ((BiConsumer<R, Object>) representationSetter).accept(representation, value);
+            ((TriConsumer<Attribute<M, R>, R, Object>) representationSetter).accept(attribute, representation, value);
+        }
+    }
+
+    public void setModelAttribute(M model, Object value) {
+        if (modelSetter != null) {
+            String name = attribute.getModelAttributeName();
+            ((TriConsumer<M, String, Object>) modelSetter).accept(model, name, value);
         }
     }
 
@@ -78,12 +83,17 @@ public class AttributeMapper<M extends Model, R extends ResourceTypeRepresentati
             Class<?> complexType = attribute.getComplexType();
 
             if (complexType == null) {
+                if (value == null || value.isNull()) {
+                    modelSetter.accept(model, name, null);
+                    return;
+                }
+
                 Set<String> values;
 
                 if (value.isArray()) {
-                    values =  value.valueStream().map(JsonNode::asText).collect(Collectors.toSet());
+                    values = value.valueStream().map(AttributeMapper::asMultivaluedString).collect(Collectors.toSet());
                 } else {
-                    values = Set.of(value.asText());
+                    values = Set.of(asMultivaluedString(value));
                 }
 
                 modelSetter.accept(model, name, values);
@@ -123,5 +133,12 @@ public class AttributeMapper<M extends Model, R extends ResourceTypeRepresentati
 
     void setAttribute(Attribute<M, R> attribute) {
         this.attribute = attribute;
+    }
+
+    private static String asMultivaluedString(JsonNode node) {
+        if (node.isObject() && node.has("value")) {
+            return node.get("value").asText();
+        }
+        return node.asText();
     }
 }

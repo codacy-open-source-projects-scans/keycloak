@@ -27,7 +27,7 @@ import { ViewHeader } from "../components/view-header/ViewHeader";
 import { useAccess } from "../context/access/Access";
 import { useRealm } from "../context/realm-context/RealmContext";
 import { toDashboard } from "../dashboard/routes/Dashboard";
-import type { Environment } from "../environment";
+import type { Environment } from "../environment-types";
 import helpUrls from "../help-urls";
 import {
   convertFormValuesToObject,
@@ -66,6 +66,7 @@ type RealmSettingsHeaderProps = {
   value: boolean;
   save: () => void;
   realmName: string;
+  displayName: string;
   refresh: () => void;
 };
 
@@ -74,6 +75,7 @@ const RealmSettingsHeader = ({
   onChange,
   value,
   realmName,
+  displayName,
   refresh,
 }: RealmSettingsHeaderProps) => {
   const { adminClient } = useAdminClient();
@@ -105,7 +107,7 @@ const RealmSettingsHeader = ({
       try {
         await adminClient.realms.del({ realm: realmName });
         addAlert(t("deletedSuccessRealmSetting"), AlertVariant.success);
-        navigate(toDashboard({ realm: environment.masterRealm }));
+        void navigate(toDashboard({ realm: environment.masterRealm }));
         refresh();
       } catch (error) {
         addError("deleteErrorRealmSetting", error);
@@ -126,7 +128,7 @@ const RealmSettingsHeader = ({
         onClose={() => setPartialExportOpen(false)}
       />
       <ViewHeader
-        titleKey={realmName}
+        titleKey={displayName}
         noTranslate
         subKey="realmSettingsExplain"
         helpUrl={helpUrls.realmSettingsUrl}
@@ -206,10 +208,10 @@ export const RealmSettingsTabs = () => {
           combinedLocales.map(async (locale) => {
             try {
               const response =
-                await adminClient.realms.getRealmLocalizationTexts({
+                (await adminClient.realms.getRealmLocalizationTexts({
                   realm: realmName,
                   selectedLocale: locale,
-                });
+                })) as Record<string, string> | undefined;
 
               if (response) {
                 setTableData([response]);
@@ -278,9 +280,9 @@ export const RealmSettingsTabs = () => {
       addError("realmSaveError", error);
     }
 
-    const isRealmRenamed = realmName !== (r.realm || realm?.realm);
+    const isRealmRenamed = realmName !== (r.realm || realm.realm);
     if (isRealmRenamed) {
-      navigate(toRealmSettings({ realm: r.realm!, tab: "general" }));
+      void navigate(toRealmSettings({ realm: r.realm!, tab: "general" }));
     }
     refresh();
   };
@@ -328,7 +330,8 @@ export const RealmSettingsTabs = () => {
           <RealmSettingsHeader
             value={field.value}
             onChange={field.onChange}
-            realmName={resolveDisplayName(t, realm?.displayName, realmName)}
+            realmName={realmName}
+            displayName={resolveDisplayName(t, realm.displayName, realmName)}
             refresh={refreshHeader}
             save={() => save(getValues())}
           />

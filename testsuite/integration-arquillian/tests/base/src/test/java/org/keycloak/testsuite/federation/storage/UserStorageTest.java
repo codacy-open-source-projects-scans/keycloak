@@ -59,13 +59,12 @@ import org.keycloak.testsuite.arquillian.annotation.ModelTest;
 import org.keycloak.testsuite.federation.UserMapStorage;
 import org.keycloak.testsuite.federation.UserMapStorageFactory;
 import org.keycloak.testsuite.federation.UserPropertyFileStorageFactory;
-import org.keycloak.testsuite.pages.AppPage;
 import org.keycloak.testsuite.pages.LoginPage;
 import org.keycloak.testsuite.pages.RegisterPage;
 import org.keycloak.testsuite.pages.VerifyEmailPage;
 import org.keycloak.testsuite.updaters.RealmAttributeUpdater;
 import org.keycloak.testsuite.util.AccountHelper;
-import org.keycloak.testsuite.util.GreenMailRule;
+import org.keycloak.testsuite.util.MailServer;
 import org.keycloak.testsuite.util.TestCleanup;
 import org.keycloak.testsuite.util.userprofile.UserProfileUtil;
 import org.keycloak.userprofile.DefaultAttributes;
@@ -120,13 +119,10 @@ public class UserStorageTest extends AbstractAuthTest {
     private String propProviderRWId;
 
     @Rule
-    public GreenMailRule greenMail = new GreenMailRule();
+    public MailServer mail = new MailServer();
 
     @Page
     protected LoginPage loginPage;
-
-    @Page
-    protected AppPage appPage;
 
     @Page
     protected RegisterPage registerPage;
@@ -198,7 +194,7 @@ public class UserStorageTest extends AbstractAuthTest {
             Assertions.assertNotNull(userMapStorageFactory);
             userMapStorageFactory.clear();
         });
-        resetTimeOffset();
+        timeOffSet.set(0);
         testingClient.testing().revertTestingInfinispanTimeService();
     }
 
@@ -228,14 +224,14 @@ public class UserStorageTest extends AbstractAuthTest {
 
     private void loginSuccessAndLogout(String username, String password) {
         oauth.openLoginForm();
-        testRealmLoginPage.form().login(username, password);
-        appPage.assertCurrent();
+        testRealmLoginPage.login(username, password);
+        Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
         AccountHelper.logout(testRealmResource(), username);
     }
 
     public void loginBadPassword(String username) {
         oauth.openLoginForm();
-        testRealmLoginPage.form().login(username, "badpassword");
+        testRealmLoginPage.login(username, "badpassword");
         assertCurrentUrlDoesntStartWith(oauth.APP_AUTH_ROOT);
     }
 
@@ -270,8 +266,8 @@ public class UserStorageTest extends AbstractAuthTest {
     @Test
     public void testLoginSuccessWithSpecialCharacter() {
         oauth.openLoginForm();
-        testRealmLoginPage.form().login("spécial", "pw");
-        appPage.assertCurrent();
+        testRealmLoginPage.login("spécial", "pw");
+        Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
         driver.navigate().to(oauth.AUTH_SERVER_ROOT + "/realms/" + testRealmResource().toRepresentation().getRealm() + "/login-actions/authenticate/" );
 
         Cookie sameSiteSessionCookie = driver.manage().getCookieNamed(CookieType.SESSION.getName());
@@ -405,9 +401,9 @@ public class UserStorageTest extends AbstractAuthTest {
 
             verifyEmailPage.assertCurrent();
 
-            Assertions.assertEquals(1, greenMail.getReceivedMessages().length);
+            Assertions.assertEquals(1, mail.getReceivedMessages().length);
 
-            MimeMessage message = greenMail.getReceivedMessages()[0];
+            MimeMessage message = mail.getReceivedMessages()[0];
 
             String verificationUrl = getEmailLink(message);
 
@@ -416,7 +412,7 @@ public class UserStorageTest extends AbstractAuthTest {
             // Update password after email verified
             updatePasswordPage.updatePasswords("password", "password");
 
-            appPage.assertCurrent();
+            Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
         }
     }
 
@@ -689,11 +685,11 @@ public class UserStorageTest extends AbstractAuthTest {
 
         setFirstname("thor", "Thor1");
 
-        setTimeOffset(2 * 24 * 60 * 60); // 2 days in future
+        timeOffSet.set(2 * 24 * 60 * 60); // 2 days in future
 
         validateFirstname("thor", "Thor0"); // should still be cached
 
-        setTimeOffset(5 * 24 * 60 * 60); // 5 days in future
+        timeOffSet.set(5 * 24 * 60 * 60); // 5 days in future
 
         validateFirstname("thor", "Thor1"); // should be evicted
 
@@ -719,11 +715,11 @@ public class UserStorageTest extends AbstractAuthTest {
 
         validateFirstname("thor", "Thor0"); // should still be cached
 
-        setTimeOffset(30 * 60); // 1/2 hour in future
+        timeOffSet.set(30 * 60); // 1/2 hour in future
 
         validateFirstname("thor", "Thor0"); // should still be cached
 
-        setTimeOffset(2 * 60 * 60); // 2 hours in future
+        timeOffSet.set(2 * 60 * 60); // 2 hours in future
 
         validateFirstname("thor", "Thor1"); // should be evicted
 

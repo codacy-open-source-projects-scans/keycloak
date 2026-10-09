@@ -181,7 +181,8 @@ public final class KcSamlBrokerTest extends AbstractAdvancedBrokerTest {
         userResource.roles().realmLevel().add(Collections.singletonList(friendlyManagerRole));
 
         oauth.client("broker-app");
-        loginPage.open(bc.consumerRealmName());
+        oauth.realm(bc.consumerRealmName());
+        oauth.openLoginForm();
 
         logInAsUserInIDP();
 
@@ -196,7 +197,8 @@ public final class KcSamlBrokerTest extends AbstractAdvancedBrokerTest {
         userResource.roles().realmLevel().remove(Collections.singletonList(friendlyManagerRole));
 
         oauth.client("broker-app");
-        loginPage.open(bc.consumerRealmName());
+        oauth.realm(bc.consumerRealmName());
+        oauth.openLoginForm();
 
         logInAsUserInIDP();
 
@@ -247,7 +249,8 @@ public final class KcSamlBrokerTest extends AbstractAdvancedBrokerTest {
         userResourceProv.roles().realmLevel().add(Collections.singletonList(userRoleDotGuide));
 
         oauth.client("broker-app");
-        loginPage.open(bc.consumerRealmName());
+        oauth.realm(bc.consumerRealmName());
+        oauth.openLoginForm();
 
         logInAsUserInIDP();
 
@@ -264,7 +267,8 @@ public final class KcSamlBrokerTest extends AbstractAdvancedBrokerTest {
         userResourceProv.update(urp);
 
         oauth.client("broker-app");
-        loginPage.open(bc.consumerRealmName());
+        oauth.realm(bc.consumerRealmName());
+        oauth.openLoginForm();
 
         logInAsUserInIDP();
 
@@ -560,7 +564,7 @@ public final class KcSamlBrokerTest extends AbstractAdvancedBrokerTest {
             builder = builder.addStepBuilder(new ModifySamlResponseStepBuilder(Binding.POST, builder) {
                 @Override
                 protected HttpUriRequest createRequest(URI locationUri, String attributeName, String samlDoc, List<NameValuePair> parameters) throws Exception {
-                    setTimeOffset(10);
+                    timeOffSet.set(10);
                     return super.createRequest(locationUri, attributeName, samlDoc, parameters);
                 }
             }).build();
@@ -571,7 +575,7 @@ public final class KcSamlBrokerTest extends AbstractAdvancedBrokerTest {
                 assertThat(hr, bodyHC(Matchers.containsString("Invalid requester")));
             });
         } finally {
-            setTimeOffset(0);
+            timeOffSet.set(0);
         }
     }
 

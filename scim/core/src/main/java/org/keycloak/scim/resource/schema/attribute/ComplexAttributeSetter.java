@@ -5,12 +5,12 @@ import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Objects;
-import java.util.function.BiConsumer;
 
-import org.keycloak.scim.resource.ResourceTypeRepresentation;
+import org.keycloak.common.util.TriConsumer;
+import org.keycloak.models.Model;
 import org.keycloak.scim.resource.common.MultiValuedAttribute;
 
-public class ComplexAttributeSetter<R extends ResourceTypeRepresentation> implements BiConsumer<R, String> {
+public class ComplexAttributeSetter<M extends Model, R> implements TriConsumer<Attribute<M, R>, R, String> {
 
     private final String name;
     private final String subName;
@@ -28,7 +28,7 @@ public class ComplexAttributeSetter<R extends ResourceTypeRepresentation> implem
     }
 
     @Override
-    public void accept(R representation, String newValue) {
+    public void accept(Attribute<M, R> attribute, R representation, String newValue) {
         try {
             Method declaredMethod = representation.getClass().getMethod("get" + Character.toUpperCase(name.charAt(0)) + name.substring(1));
             Class<?> returnType = declaredMethod.getReturnType();

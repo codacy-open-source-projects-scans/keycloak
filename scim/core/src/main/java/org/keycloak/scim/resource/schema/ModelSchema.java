@@ -2,12 +2,15 @@ package org.keycloak.scim.resource.schema;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.keycloak.models.Model;
-import org.keycloak.scim.resource.ResourceTypeRepresentation;
+import org.keycloak.models.ModelValidationException;
 import org.keycloak.scim.resource.schema.attribute.Attribute;
 
 import com.fasterxml.jackson.databind.JsonNode;
+
+import static java.util.Optional.ofNullable;
 
 /**
  * <p>An interface that represents a schema for a resource type.
@@ -16,7 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
  * the representation of a resource type and to validate and map the attributes from the schema from a {@link ResourceTypeRepresentation}, usually an
  * object from the RESTful layer, to a {@link Model} and vice versa.
  */
-public interface ModelSchema<M extends Model, R extends ResourceTypeRepresentation> {
+public interface ModelSchema<M extends Model, R> {
 
     /**
      * The id of the schema. It is used to identify the schema and to associate it with a resource type.
@@ -70,9 +73,9 @@ public interface ModelSchema<M extends Model, R extends ResourceTypeRepresentati
      * Validates the given {@code representation} against the schema. It should throw an exception if the representation is not valid.
      *
      * @param representation the representation to be validated
-     * @throws SchemaValidationException if the representation is not valid against the schema
+     * @throws ModelValidationException if the representation is not valid against the schema
      */
-    void validate(R representation) throws SchemaValidationException;
+    void validate(R representation) throws ModelValidationException;
 
     /**
      * Performs a PATCH {@code add} operation on the given {@code model} for the attribute defined by the given {@code path} and the given {@code value}.
@@ -128,4 +131,23 @@ public interface ModelSchema<M extends Model, R extends ResourceTypeRepresentati
      * @return the attribute for the given path, or {@code null} if no attribute is defined for the given path
      */
     Attribute<M, R> getAttributeByPath(String path);
+
+    /**
+     * Returns {@code true} if this schema is an internal schema, not exposed from the schema endpoint.
+     *
+     * @return {@code true} if this schema is an internal schema, {@code false} otherwise
+     */
+    default boolean isInternal() {
+        return false;
+    }
+
+    /**
+     * Returns {@code true} if this schema supports any of the given {@code schemas}
+     *
+     * @param schemas the schemas
+     * @return {@code true} if this schema supports any of the given {@code schemas}. Otherwise, {@code false}
+     */
+    default boolean supports(Set<String> schemas) {
+        return isCore() || ofNullable(schemas).orElse(Set.of()).contains(getId());
+    }
 }

@@ -46,17 +46,17 @@ import org.keycloak.models.jpa.entities.AuthenticationFlowEntity;
 import org.keycloak.models.utils.TimeBasedOTP;
 import org.keycloak.representations.idm.AuthenticationFlowRepresentation;
 import org.keycloak.representations.idm.ClientRepresentation;
+import org.keycloak.testframework.events.EventAssertion;
 import org.keycloak.testsuite.AssertEvents;
 import org.keycloak.testsuite.admin.AdminApiUtil;
 import org.keycloak.testsuite.arquillian.annotation.EnableFeature;
 import org.keycloak.testsuite.arquillian.annotation.UncaughtServerErrorExpected;
 import org.keycloak.testsuite.authentication.PushButtonAuthenticatorFactory;
-import org.keycloak.testsuite.pages.AppPage;
 import org.keycloak.testsuite.pages.ErrorPage;
 import org.keycloak.testsuite.pages.LoginPage;
+import org.keycloak.testsuite.pages.PushTheButtonPage;
 import org.keycloak.testsuite.util.AdminClientUtil;
 import org.keycloak.testsuite.util.FlowUtil;
-import org.keycloak.testsuite.util.UIUtils;
 import org.keycloak.util.BasicAuthHelper;
 
 import org.jboss.arquillian.graphene.page.Page;
@@ -64,7 +64,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.jupiter.api.Assertions;
-import org.openqa.selenium.By;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -82,13 +81,13 @@ public class FlowOverrideTest extends AbstractFlowTest {
     public AssertEvents events = new AssertEvents(this);
 
     @Page
-    protected AppPage appPage;
-
-    @Page
     protected LoginPage loginPage;
 
     @Page
     protected ErrorPage errorPage;
+
+    @Page
+    protected PushTheButtonPage pushTheButtonPage;
 
     private TimeBasedOTP totp = new TimeBasedOTP();
 
@@ -204,19 +203,18 @@ public class FlowOverrideTest extends AbstractFlowTest {
         oauth.client(TEST_APP_FLOW);
         oauth.openLoginForm();
 
-        Assertions.assertEquals("PushTheButton", driver.getTitle());
+        pushTheButtonPage.assertCurrent();
 
         // Push the button. I am redirected to username+password form
-        UIUtils.clickLink(driver.findElement(By.name("submit1")));
-
+        pushTheButtonPage.submit();
 
         loginPage.assertCurrent();
 
         // Fill username+password. I am successfully authenticated
         oauth.fillLoginForm("test-user@localhost", getPassword("test-user@localhost"));
-        appPage.assertCurrent();
+        Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
 
-        events.expectLogin().client("test-app-flow").detail(Details.USERNAME, "test-user@localhost").assertEvent();
+        EventAssertion.expectLoginSuccess(events.poll()).clientId("test-app-flow").details(Details.USERNAME, "test-user@localhost");
     }
 
     @Test
@@ -224,11 +222,11 @@ public class FlowOverrideTest extends AbstractFlowTest {
         testWithRemovedFlowOverrideByClient(AuthenticationFlowBindings.BROWSER_BINDING, this::testNoOverrideBrowser);
     }
 
-    // TODO remove this once DYNAMIC_SCOPES feature is enabled by default
+    // TODO remove this once PARAMETERIZED_SCOPES feature is enabled by default
     @Test
-    @EnableFeature(value = Profile.Feature.DYNAMIC_SCOPES, skipRestart = true)
-    public void testWithClientBrowserOverrideWithDynamicScope() throws Exception {
-        // Just use existing test with DYNAMIC_SCOPES feature enabled as it was failing with DYNAMIC_SCOPES
+    @EnableFeature(value = Profile.Feature.PARAMETERIZED_SCOPES, skipRestart = true)
+    public void testWithClientBrowserOverrideWithParameterizedScope() throws Exception {
+        // Just use existing test with PARAMETERIZED_SCOPES feature enabled as it was failing with PARAMETERIZED_SCOPES
         testWithClientBrowserOverride();
     }
 
@@ -246,9 +244,9 @@ public class FlowOverrideTest extends AbstractFlowTest {
 
         // Fill username+password. I am successfully authenticated
         oauth.fillLoginForm("test-user@localhost", getPassword("test-user@localhost"));
-        appPage.assertCurrent();
+        Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
 
-        events.expectLogin().client(clientId).detail(Details.USERNAME, "test-user@localhost").assertEvent();
+        EventAssertion.expectLoginSuccess(events.poll()).clientId(clientId).details(Details.USERNAME, "test-user@localhost");
     }
 
     @Test

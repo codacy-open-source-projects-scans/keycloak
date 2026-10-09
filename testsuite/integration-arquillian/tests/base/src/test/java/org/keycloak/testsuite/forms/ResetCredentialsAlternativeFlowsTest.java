@@ -35,7 +35,6 @@ import org.keycloak.testframework.realm.UserBuilder;
 import org.keycloak.testsuite.AbstractAuthenticationTest;
 import org.keycloak.testsuite.actions.AbstractAppInitiatedActionTest;
 import org.keycloak.testsuite.admin.AdminApiUtil;
-import org.keycloak.testsuite.pages.AppPage;
 import org.keycloak.testsuite.pages.ErrorPage;
 import org.keycloak.testsuite.pages.LoginConfigTotpPage;
 import org.keycloak.testsuite.pages.LoginPage;
@@ -48,7 +47,7 @@ import org.keycloak.testsuite.pages.PasswordPage;
 import org.keycloak.testsuite.pages.RegisterPage;
 import org.keycloak.testsuite.util.AccountHelper;
 import org.keycloak.testsuite.util.FlowUtil;
-import org.keycloak.testsuite.util.GreenMailRule;
+import org.keycloak.testsuite.util.MailServer;
 import org.keycloak.testsuite.util.MailUtils;
 import org.keycloak.testsuite.util.URLUtils;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
@@ -73,7 +72,7 @@ public class ResetCredentialsAlternativeFlowsTest extends AbstractAppInitiatedAc
     private String password;
 
     @Rule
-    public GreenMailRule greenMail = new GreenMailRule();
+    public MailServer mail = new MailServer();
 
     @Page
     protected LoginPage loginPage;
@@ -104,9 +103,6 @@ public class ResetCredentialsAlternativeFlowsTest extends AbstractAppInitiatedAc
 
     @Page
     protected ErrorPage errorPage;
-
-    @Page
-    protected AppPage appPage;
 
     protected TimeBasedOTP totp = new TimeBasedOTP();
 
@@ -153,7 +149,7 @@ public class ResetCredentialsAlternativeFlowsTest extends AbstractAppInitiatedAc
             assertEquals("You should receive an email shortly with further instructions.", loginUsernameOnlyPage.getSuccessMessage());
 
             // Assert no email was sent as user was cleared
-            assertEquals(0, greenMail.getReceivedMessages().length);
+            assertEquals(0, mail.getReceivedMessages().length);
 
         } finally {
             revertFlows();
@@ -180,7 +176,7 @@ public class ResetCredentialsAlternativeFlowsTest extends AbstractAppInitiatedAc
             errorPage.assertCurrent();
 
             // Assert no email was sent
-            assertEquals(0, greenMail.getReceivedMessages().length);
+            assertEquals(0, mail.getReceivedMessages().length);
         } finally {
             revertFlows();
         }
@@ -206,7 +202,7 @@ public class ResetCredentialsAlternativeFlowsTest extends AbstractAppInitiatedAc
             assertEquals("You should receive an email shortly with further instructions.", loginUsernameOnlyPage.getSuccessMessage());
 
             // Assert email was sent
-            assertEquals(1, greenMail.getReceivedMessages().length);
+            assertEquals(1, mail.getReceivedMessages().length);
         } finally {
             revertFlows();
         }
@@ -243,10 +239,10 @@ public class ResetCredentialsAlternativeFlowsTest extends AbstractAppInitiatedAc
             assertEquals("You should receive an email shortly with further instructions.", loginUsernameOnlyPage.getSuccessMessage());
 
             // Assert email was sent
-            assertEquals(1, greenMail.getReceivedMessages().length);
+            assertEquals(1, mail.getReceivedMessages().length);
 
             // Successfully reset password
-            MimeMessage message = greenMail.getReceivedMessages()[0];
+            MimeMessage message = mail.getReceivedMessages()[0];
 
             String changePasswordUrl = MailUtils.getPasswordResetEmailLink(message);
 
@@ -256,8 +252,7 @@ public class ResetCredentialsAlternativeFlowsTest extends AbstractAppInitiatedAc
             updatePasswordPage.changePassword("resetPassword", "resetPassword");
 
             // Assert user authenticated
-            Assertions.assertEquals(AppPage.RequestType.AUTH_RESPONSE, appPage.getRequestType());
-            Assertions.assertNotNull(oauth.parseLoginResponse().getCode());
+            Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
         } finally {
             revertFlows();
         }
@@ -451,9 +446,7 @@ public class ResetCredentialsAlternativeFlowsTest extends AbstractAppInitiatedAc
             totpPage.configure(totp.generateTOTP(totpPage.getTotpSecret()), "");
 
             // Assert user authenticated
-            appPage.assertCurrent();
-            Assertions.assertEquals(AppPage.RequestType.AUTH_RESPONSE, appPage.getRequestType());
-            Assertions.assertNotNull(oauth.parseLoginResponse().getCode());
+            Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
 
             Assertions.assertTrue(AccountHelper.isTotpPresent(managedRealm.admin(), "bwilson"));
             Assertions.assertTrue(AccountHelper.totpUserLabelComparator(managedRealm.admin(), "bwilson", ""));
@@ -482,9 +475,7 @@ public class ResetCredentialsAlternativeFlowsTest extends AbstractAppInitiatedAc
             totpPage.configure(totp.generateTOTP(totpPage.getTotpSecret()), secondOtpLabel);
 
             // Assert user authenticated
-            appPage.assertCurrent();
-            Assertions.assertEquals(AppPage.RequestType.AUTH_RESPONSE, appPage.getRequestType());
-            Assertions.assertNotNull(oauth.parseLoginResponse().getCode());
+            Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
 
             // Verify 2nd OTP credential was successfully created too
             Assertions.assertTrue(AccountHelper.totpUserLabelComparator(managedRealm.admin(), "bwilson", secondOtpLabel));

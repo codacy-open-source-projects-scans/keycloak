@@ -16,7 +16,6 @@
  */
 package org.keycloak.services.resources.admin;
 
-import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -24,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -61,6 +59,7 @@ import org.keycloak.models.light.LightweightUserAdapter;
 import org.keycloak.models.utils.ModelToRepresentation;
 import org.keycloak.models.utils.RepresentationToModel;
 import org.keycloak.policy.PasswordPolicyNotMetException;
+import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.ErrorRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.services.ErrorResponse;
@@ -70,8 +69,8 @@ import org.keycloak.services.resources.admin.fgap.AdminPermissionEvaluator;
 import org.keycloak.services.resources.admin.fgap.UserPermissionEvaluator;
 import org.keycloak.services.util.DateUtil;
 import org.keycloak.userprofile.UserProfile;
-import org.keycloak.userprofile.UserProfileContext;
 import org.keycloak.userprofile.UserProfileProvider;
+import org.keycloak.utils.GroupUtils;
 import org.keycloak.utils.SearchQueryUtils;
 
 import org.eclipse.microprofile.openapi.annotations.Operation;
@@ -100,7 +99,6 @@ import static org.keycloak.userprofile.UserProfileContext.USER_API;
 public class UsersResource {
 
     private static final Logger logger = Logger.getLogger(UsersResource.class);
-    private static final String SEARCH_ID_PARAMETER = "id:";
 
     protected final RealmModel realm;
 
@@ -171,9 +169,18 @@ public class UsersResource {
 
             UserResource.updateUserFromRep(profile, user, rep, session, false);
             RepresentationToModel.createFederatedIdentities(rep, session, realm, user);
-            RepresentationToModel.createGroups(session, rep, realm, user);
+            RepresentationToModel.createGroups(session, rep, realm, user, (g) -> {
+                auth.groups().requireManageMembership(g);
+                GroupUtils.checkAdminGroupRoles(g, auth);
+                user.joinGroup(g);
+            });
 
+            if (rep.getCredentials() != null && rep.getCredentials().stream()
+                    .anyMatch(c -> c.getType() == null || CredentialRepresentation.PASSWORD.equals(c.getType()))) {
+                auth.users().requireResetPassword(user);
+            }
             RepresentationToModel.createCredentials(rep, session, realm, user, true);
+            RepresentationToModel.createVerifiableCredentials(rep, session, user);
             adminEvent.operation(OperationType.CREATE).resourcePath(session.getContext().getUri(), user.getId()).representation(rep).success();
 
             return Response.created(session.getContext().getUri().getAbsolutePathBuilder().path(user.getId()).build()).build();
@@ -181,8 +188,7 @@ public class UsersResource {
             throw ErrorResponse.exists("User exists with same username or email");
         } catch (PasswordPolicyNotMetException e) {
             logger.warn("Password policy not met for user " + e.getUsername(), e);
-            Properties messages = AdminRoot.getMessages(session, realm, auth.adminAuth().getToken().getLocale());
-            throw new ErrorResponseException(e.getMessage(), MessageFormat.format(messages.getProperty(e.getMessage(), e.getMessage()), e.getParameters()),
+            throw new ErrorResponseException(e.getMessage(), ErrorResponse.resolveMessage(session, auth.adminAuth().getToken().getLocale(), e.getMessage(), e.getParameters()),
                     Response.Status.BAD_REQUEST);
         } catch (ModelIllegalStateException e) {
             logger.error(e.getMessage(), e);
@@ -213,6 +219,7 @@ public class UsersResource {
         for (GroupModel group : groups) {
             auth.groups().requireManageMembers(group);
             auth.groups().requireManageMembership(group);
+            GroupUtils.checkAdminGroupRoles(group, auth);
         }
 
         return true;
@@ -306,9 +313,11 @@ public class UsersResource {
 
         Stream<UserModel> userModels = Stream.empty();
         if (search != null) {
-            if (search.startsWith(SEARCH_ID_PARAMETER)) {
-                String[] userIds = search.substring(SEARCH_ID_PARAMETER.length()).trim().split("\\s+");
-                userModels = Arrays.stream(userIds).map(id -> session.users().getUserById(realm, id)).filter(Objects::nonNull);
+            SearchQueryUtils.UserSearchPrefix prefix = SearchQueryUtils.UserSearchPrefix.matching(search);
+            if (prefix != null) {
+                userModels = Arrays.stream(prefix.splitTerms(search))
+                        .map(term -> prefix.lookup(session.users(), realm, term))
+                        .filter(Objects::nonNull);
                 if (AdminPermissionsSchema.SCHEMA.isAdminPermissionsEnabled(realm)) {
                     userModels = userModels.filter(userPermissionEvaluator::canView);
                 }
@@ -435,9 +444,13 @@ public class UsersResource {
                 ? Collections.emptyMap()
                 : SearchQueryUtils.getFields(searchQuery);
         if (search != null) {
-            if (search.startsWith(SEARCH_ID_PARAMETER)) {
-                UserModel userModel = session.users().getUserById(realm, search.substring(SEARCH_ID_PARAMETER.length()).trim());
-                return userModel != null && userPermissionEvaluator.canView(userModel) ? 1 : 0;
+            SearchQueryUtils.UserSearchPrefix prefix = SearchQueryUtils.UserSearchPrefix.matching(search);
+            if (prefix != null) {
+                return (int) Arrays.stream(prefix.splitTerms(search))
+                        .map(term -> prefix.lookup(session.users(), realm, term))
+                        .filter(Objects::nonNull)
+                        .filter(userPermissionEvaluator::canView)
+                        .count();
             }
 
             Map<String, String> parameters = new HashMap<>();
@@ -559,11 +572,11 @@ public class UsersResource {
             }
         }
 
-        return toRepresentation(realm, usersEvaluator, briefRepresentation, session.users().searchForUserStream(realm, attributes, firstResult, maxResults));
+        return session.runAsReadOnly(() -> toRepresentation(realm, usersEvaluator, briefRepresentation, session.users().searchForUserStream(realm, attributes, firstResult, maxResults)));
     }
 
     private Stream<UserRepresentation> toRepresentation(RealmModel realm, UserPermissionEvaluator usersEvaluator, Boolean briefRepresentation, Stream<UserModel> userModels) {
-        boolean briefRepresentationB = briefRepresentation != null && briefRepresentation;
+        boolean briefRep = Boolean.TRUE.equals(briefRepresentation);
 
         if (!AdminPermissionsSchema.SCHEMA.isAdminPermissionsEnabled(realm)) {
             usersEvaluator.grantIfNoPermission(session.getAttribute(UserModel.GROUPS) != null);
@@ -571,15 +584,9 @@ public class UsersResource {
             usersEvaluator.grantIfNoPermission(session.getAttribute(UserModel.GROUPS) != null);
         }
 
-        UserProfileProvider provider = session.getProvider(UserProfileProvider.class);
-
         return userModels
                 .map(user -> {
-                    UserProfile profile = provider.create(UserProfileContext.USER_API, user);
-                    UserRepresentation rep = profile.toRepresentation(!briefRepresentationB);
-                    UserRepresentation userRep = briefRepresentationB ?
-                            ModelToRepresentation.toBriefRepresentation(user, rep, false) :
-                            ModelToRepresentation.toRepresentation(session, realm, user, rep, false);
+                    UserRepresentation userRep = ModelToRepresentation.toRepresentation(session, user, briefRep);
                     userRep.setAccess(usersEvaluator.getAccessForListing(user));
                     return userRep;
                 });

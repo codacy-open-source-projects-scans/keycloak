@@ -17,10 +17,13 @@
 
 package org.keycloak.services.clientpolicy.executor;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -41,19 +44,32 @@ import org.keycloak.services.clientpolicy.context.ClientCRUDContext;
 import org.keycloak.services.clientpolicy.context.DynamicClientRegisterContext;
 import org.keycloak.services.clientpolicy.context.DynamicClientUpdateContext;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:takashi.norimatsu.ws@hitachi.com">Takashi Norimatsu</a>
  */
-public class SecureClientUrisExecutor implements ClientPolicyExecutorProvider<ClientPolicyExecutorConfigurationRepresentation> {
+public class SecureClientUrisExecutor implements ClientPolicyExecutorProvider<SecureClientUrisExecutor.Configuration> {
 
     private static final Logger logger = Logger.getLogger(SecureClientUrisExecutor.class);
 
     private final KeycloakSession session;
+    private Configuration configuration;
+
 
     public SecureClientUrisExecutor(KeycloakSession session) {
         this.session = session;
+    }
+
+    @Override
+    public void setupConfiguration(Configuration config) {
+        this.configuration = config;
+    }
+
+    @Override
+    public Class<Configuration> getExecutorConfigurationClass() {
+        return Configuration.class;
     }
 
     @Override
@@ -108,6 +124,10 @@ public class SecureClientUrisExecutor implements ClientPolicyExecutorProvider<Cl
         // backchannel logout URL
         String logoutUrl = Optional.ofNullable(clientRep.getAttributes()).orElse(Collections.emptyMap()).get(OIDCConfigAttributes.BACKCHANNEL_LOGOUT_URL);
         if (logoutUrl != null) confirmSecureUris(List.of(logoutUrl), "logoutUrl");
+
+        // front-channel logout URL
+        String frontChannelLogoutUrl = Optional.ofNullable(clientRep.getAttributes()).orElse(Collections.emptyMap()).get(OIDCConfigAttributes.FRONT_CHANNEL_LOGOUT_URI);
+        if (frontChannelLogoutUrl != null) confirmSecureUris(List.of(frontChannelLogoutUrl), "frontChannelLogoutUrl");
 
         // OAuth2 : redirectUris
         List<String> redirectUris = clientRep.getRedirectUris();
@@ -180,9 +200,30 @@ public class SecureClientUrisExecutor implements ClientPolicyExecutorProvider<Cl
         }
 
         logger.tracev("Redirect URI = {0}", redirectUri);
-        if (!redirectUri.startsWith("https://") || redirectUri.contains("*")) {
+        if (redirectUri.contains("*")) {
             throw new ClientPolicyException(OAuthErrorException.INVALID_REQUEST, "Invalid redirect_uri");
         }
+        if (!redirectUri.startsWith("https://")) {
+            if (!configuration.allowHttpOnLocalhost || !isHttpLoopbackUri(redirectUri)) {
+                throw new ClientPolicyException(OAuthErrorException.INVALID_REQUEST, "Invalid redirect_uri");
+            }
+        }
+    }
+
+    private static boolean isHttpLoopbackUri(String redirectUri) {
+        URI uri;
+        try {
+            uri = new URI(redirectUri);
+        } catch (URISyntaxException e) {
+            logger.debugv("Invalid redirect_uri syntax: {0}", redirectUri);
+            return false;
+        }
+
+        if (!"http".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+            return false;
+        }
+
+        return RedirectUtils.LOOPBACK_INTERFACES.contains(uri.getHost().toLowerCase(Locale.ROOT));
     }
 
     private List<String> resolveUrlWithRedirects(List<String> originalUrls, List<String> redirectUris,
@@ -192,5 +233,19 @@ public class SecureClientUrisExecutor implements ClientPolicyExecutorProvider<Cl
         }
         Set<String> resolvedUrls = RedirectUtils.resolveUrlsWithRedirects(session, originalUrls, rootUrl, redirectUris, returnAsOrigins);
         return new ArrayList<>(resolvedUrls);
+    }
+
+    public static class Configuration extends ClientPolicyExecutorConfigurationRepresentation {
+
+        @JsonProperty("allow-http-on-localhost")
+        protected boolean allowHttpOnLocalhost;
+
+        public boolean getAllowHttpOnLocalhost() {
+            return allowHttpOnLocalhost;
+        }
+
+        public void setAllowHttpOnLocalhost(boolean allowHttpOnLocalhost) {
+            this.allowHttpOnLocalhost = allowHttpOnLocalhost;
+        }
     }
 }
